@@ -40,7 +40,7 @@ class ScreenAnalyzer(
 ) {
     companion object {
         /** Mögliche Breiten des Karten-Symbols als Anteil der Bildschirmbreite. */
-        val SCALES = doubleArrayOf(0.06, 0.07, 0.08, 0.09, 0.10, 0.11, 0.125, 0.14, 0.16, 0.18)
+        val SCALES = doubleArrayOf(0.08, 0.09, 0.10, 0.11, 0.125, 0.14, 0.16, 0.18)
 
         // Innerer Bildausschnitt der Karte (ohne Rahmen)
         private const val CROP_X0 = 0.14
@@ -49,6 +49,14 @@ class ScreenAnalyzer(
         private const val CROP_Y1 = 0.80
 
         private const val MAX_CANDIDATES = 3
+
+        // Gegen Fehl-Erkennungen (getestet an echtem Screenshot):
+        /** Beste Karte muss so viel besser sein als die zweitbeste andere Karte. */
+        private const val MIN_MARGIN = 0.05
+        /** Farbvergleich (HSV-Histogramm) Bildausschnitt vs. Karte. */
+        private const val MIN_COLOR = 0.25
+        /** Karte muss in 2 Bildern hintereinander an derselben Stelle gefunden werden. */
+        private const val CONFIRM_WINDOW_MS = 700L
     }
 
     data class Result(
@@ -61,23 +69,23 @@ class ScreenAnalyzer(
         val interesting: Boolean,
     )
 
-    private class Card(val name: String, val gray: Mat) {
+    private class Card(val name: String, val gray: Mat, val color: Mat) {
         val perScale = arrayOfNulls<Mat>(SCALES.size)
+        val histPerScale = arrayOfNulls<Mat>(SCALES.size)
     }
 
     private class Tpl(val name: String, val mat: Mat)
 
     private data class Hit(val name: String, val score: Double, val scaleIdx: Int, val x: Int, val y: Int, val w: Int, val h: Int)
 
-    private val cards: List<Card> = bundled.mapNotNull { (name, bmp) -> cropGray(bmp)?.let { Card(name, it) } }
+    private val cards: List<Card> = bundled.mapNotNull { (name, bmp) -> cropCard(bmp)?.let { (g, c) -> Card(name, g, c) } }
     private val exact: List<Tpl> = userTemplates.mapNotNull { loadExact(it) }
 
     val cardCount: Int get() = cards.size + exact.size
 
-    @Volatile var threshold = 0.72
+    @Volatile var threshold = 0.78
     @Volatile var roiTop = 0.08
     @Volatile var roiBottom = 0.62
-    @Volatile var restrictTo: Set<String>? = null
     /** Bereiche in echten Bildschirm-Pixeln, die ignoriert werden (unser Overlay). */
     @Volatile var masks: List<Rect> = emptyList()
     /** -1 = noch nicht kalibriert */
@@ -96,9 +104,35 @@ class ScreenAnalyzer(
     private val pinkMask = Mat()
     private val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0))
 
+    private val hsvPatch = Mat()
+    private val rgbPatch = Mat()
+    /** Unbestätigte Treffer: Name -> (Zeit, x, y) */
+    private val pending = HashMap<String, Triple<Long, Int, Int>>()
+
     init {
         // Alle Größen vorab erzeugen, damit das erste Match nicht ruckelt
-        for (c in cards) for (i in SCALES.indices) c.perScale[i] = makeScaled(c, i)
+        for (c in cards) for (i in SCALES.indices) {
+            c.perScale[i] = makeScaled(c, i)
+            c.histPerScale[i] = c.perScale[i]?.let { g ->
+                val col = Mat()
+                Imgproc.resize(c.color, col, g.size(), 0.0, 0.0, Imgproc.INTER_AREA)
+                hist(col).also { col.release() }
+            }
+        }
+    }
+
+    /** HSV-Histogramm (Farbton x Sättigung) eines RGB-Bildes. */
+    private fun hist(rgb: Mat): Mat {
+        val hsv = Mat()
+        Imgproc.cvtColor(rgb, hsv, Imgproc.COLOR_RGB2HSV)
+        val h = Mat()
+        Imgproc.calcHist(
+            listOf(hsv), org.opencv.core.MatOfInt(0, 1), Mat(), h,
+            org.opencv.core.MatOfInt(16, 8), org.opencv.core.MatOfFloat(0f, 180f, 0f, 256f),
+        )
+        Core.normalize(h, h)
+        hsv.release()
+        return h
     }
 
     @Synchronized
@@ -111,7 +145,8 @@ class ScreenAnalyzer(
 
     // ------------------------------------------------------------------ Vorlagen
 
-    private fun cropGray(bmp: Bitmap): Mat? {
+    /** Innerer Ausschnitt der Karte als (Graustufen, RGB). */
+    private fun cropCard(bmp: Bitmap): Pair<Mat, Mat>? {
         val x0 = (bmp.width * CROP_X0).toInt()
         val y0 = (bmp.height * CROP_Y0).toInt()
         val w = (bmp.width * (CROP_X1 - CROP_X0)).toInt()
@@ -122,8 +157,10 @@ class ScreenAnalyzer(
         Utils.bitmapToMat(cropped, rgba)
         val g = Mat()
         Imgproc.cvtColor(rgba, g, Imgproc.COLOR_RGBA2GRAY)
+        val c = Mat()
+        Imgproc.cvtColor(rgba, c, Imgproc.COLOR_RGBA2RGB)
         rgba.release()
-        return g
+        return g to c
     }
 
     private fun makeScaled(c: Card, scaleIdx: Int): Mat? {
@@ -185,30 +222,33 @@ class ScreenAnalyzer(
         val scales: List<Int> =
             if (lockedScale >= 0) listOf(lockedScale - 1, lockedScale, lockedScale + 1).filter { it in SCALES.indices }
             else SCALES.indices.toList()
-        val restrict = restrictTo
         val hits = mutableListOf<Hit>()
         var best: Hit? = null
         for (r in candidates) {
-            val h = classify(r, scales, restrict) ?: continue
+            val (h, second) = classify(r, scales) ?: continue
             if (best == null || h.score > best.score) best = h
-            if (h.score >= threshold) hits += h
+            if (h.score >= threshold && h.score - second >= MIN_MARGIN && colorMatches(rgba, h)) hits += h
         }
 
-        // Erster sehr sicherer Treffer -> Größe festhalten
         val b = best
-        if (lockedScale < 0 && b != null && b.scaleIdx >= 0 && b.score >= max(0.84, threshold + 0.08)) {
-            lockedScale = b.scaleIdx
-        }
 
         val accepted = mutableListOf<Hit>()
         for (h in hits.sortedByDescending { it.score }) {
             if (accepted.none { overlaps(it, h) }) accepted += h
         }
         val detections = mutableListOf<String>()
+        pending.entries.removeAll { nowMs - it.value.first > CONFIRM_WINDOW_MS }
         for (h in accepted) {
+            // Bestätigung: gleiche Karte kurz vorher an fast derselben Stelle?
+            val p = pending[h.name]
+            val confirmed = p != null && kotlin.math.abs(p.second - h.x) <= h.w / 2 && kotlin.math.abs(p.third - h.y) <= h.h / 2
+            pending[h.name] = Triple(nowMs, h.x, h.y)
+            if (!confirmed) continue
             val prev = lastSeen[h.name]
             lastSeen[h.name] = nowMs
             if (prev == null || nowMs - prev > cooldownMs) detections += h.name
+            // Erste bestätigte Karte -> Symbol-Größe festhalten (Kalibrierung)
+            if (lockedScale < 0 && h.scaleIdx >= 0) lockedScale = h.scaleIdx
         }
         val interesting = b != null && b.score >= 0.5
         return Result(detections, b?.name, b?.score ?: 0.0, true, lockedScale, interesting)
@@ -237,7 +277,7 @@ class ScreenAnalyzer(
     }
 
     /** Vergleicht alle (bzw. erlaubten) Karten in einem Fenster um [r]. Parallel. */
-    private fun classify(r: org.opencv.core.Rect, scales: List<Int>, restrict: Set<String>?): Hit? {
+    private fun classify(r: org.opencv.core.Rect, scales: List<Int>): Pair<Hit, Double>? {
         val maxTplW = (frameWidth * SCALES[scales.last()] * (CROP_X1 - CROP_X0)).toInt()
         val margin = max(8, maxTplW / 3)
         val x0 = max(0, r.x - margin)
@@ -249,13 +289,9 @@ class ScreenAnalyzer(
 
         val jobs = ArrayList<Pair<String, Pair<Mat, Int>>>()
         for (c in cards) {
-            if (restrict != null && c.name !in restrict) continue
             for (s in scales) c.perScale[s]?.let { jobs += c.name to (it to s) }
         }
-        for (t in exact) {
-            if (restrict != null && t.name !in restrict) continue
-            jobs += t.name to (t.mat to -1)
-        }
+        for (t in exact) jobs += t.name to (t.mat to -1)
         if (jobs.isEmpty()) {
             window.release(); return null
         }
@@ -264,26 +300,52 @@ class ScreenAnalyzer(
         val futures = chunks.map { chunk ->
             pool.submit(Callable {
                 val res = Mat()
-                var bestLocal: Hit? = null
+                // bester Treffer je Karte
+                val perName = HashMap<String, Hit>()
                 for ((name, p) in chunk) {
                     val (t, s) = p
                     if (t.rows() > window.rows() || t.cols() > window.cols()) continue
                     Imgproc.matchTemplate(window, t, res, Imgproc.TM_CCOEFF_NORMED)
                     val mm = Core.minMaxLoc(res)
-                    if (bestLocal == null || mm.maxVal > bestLocal.score) {
-                        bestLocal = Hit(
+                    val old = perName[name]
+                    if (old == null || mm.maxVal > old.score) {
+                        perName[name] = Hit(
                             name, mm.maxVal, s,
                             x0 + mm.maxLoc.x.toInt(), y0 + mm.maxLoc.y.toInt(), t.cols(), t.rows(),
                         )
                     }
                 }
                 res.release()
-                bestLocal
+                perName
             })
         }
-        val best = futures.mapNotNull { it.get() }.maxByOrNull { it.score }
+        val merged = HashMap<String, Hit>()
+        for (f in futures) for ((n, h) in f.get()) {
+            val old = merged[n]
+            if (old == null || h.score > old.score) merged[n] = h
+        }
         window.release()
-        return best
+        val sorted = merged.values.sortedByDescending { it.score }
+        val best = sorted.firstOrNull() ?: return null
+        val second = sorted.getOrNull(1)?.score ?: 0.0
+        return best to second
+    }
+
+    /** Farbcheck: Bildausschnitt am Trefferort vs. Karte in gleicher Größe. */
+    private fun colorMatches(rgba: Mat, h: Hit): Boolean {
+        if (h.scaleIdx < 0) return true // eigene Vorlage
+        val c = cards.firstOrNull { it.name == h.name } ?: return false
+        val th = c.histPerScale[h.scaleIdx] ?: return false
+        val x1 = min(rgba.cols(), h.x + h.w)
+        val y1 = min(rgba.rows(), h.y + h.h)
+        if (x1 - h.x < 4 || y1 - h.y < 4) return false
+        val patch = rgba.submat(h.y, y1, h.x, x1)
+        Imgproc.cvtColor(patch, rgbPatch, Imgproc.COLOR_RGBA2RGB)
+        patch.release()
+        val ph = hist(rgbPatch)
+        val corr = Imgproc.compareHist(ph, th, Imgproc.HISTCMP_CORREL)
+        ph.release()
+        return corr >= MIN_COLOR
     }
 
     /**
@@ -315,7 +377,11 @@ class ScreenAnalyzer(
     @Synchronized
     fun release() {
         pool.shutdownNow()
-        cards.forEach { c -> c.gray.release(); c.perScale.forEach { it?.release() } }
+        cards.forEach { c ->
+            c.gray.release(); c.color.release()
+            c.perScale.forEach { it?.release() }; c.histPerScale.forEach { it?.release() }
+        }
+        hsvPatch.release(); rgbPatch.release()
         exact.forEach { it.mat.release() }
         listOf(gray, prevGray, diff, hsv, pinkMask, kernel).forEach { it.release() }
     }

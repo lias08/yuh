@@ -15,7 +15,7 @@ class Prefs(ctx: Context) {
         set(v) = sp.edit().putInt(KEY_ROI_BOTTOM, v).apply()
     /** Erkennungs-Schwelle 50..99 (%). */
     var threshold: Int
-        get() = sp.getInt(KEY_THRESHOLD, 72)
+        get() = sp.getInt(KEY_THRESHOLD, 78)
         set(v) = sp.edit().putInt(KEY_THRESHOLD, v).apply()
     var intervalMs: Int
         get() = sp.getInt(KEY_INTERVAL, 150)
@@ -59,7 +59,7 @@ class Prefs(ctx: Context) {
 
     companion object {
         const val KEY_DIAG = "diagnostics"
-        const val KEY_LOCKED_SCALE = "locked_scale_v2"
+        const val KEY_LOCKED_SCALE = "locked_scale_v3"
         const val KEY_SCALE = "overlay_scale"
         const val KEY_OPACITY = "overlay_opacity"
         const val KEY_ANCHOR = "overlay_anchor"

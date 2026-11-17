@@ -197,7 +197,6 @@ class TrackerService : Service(), OverlayController.Listener {
         overlay.hide()
         overlay = createOverlay()
         overlay.show()
-        updateRestriction()
         renderUi()
     }
 
@@ -375,8 +374,7 @@ class TrackerService : Service(), OverlayController.Listener {
             state.engine.update(now)
             analyzer?.resetCooldowns()
             lastText = "Match erkannt – Gegner startet mit 5 Elixier"
-            updateRestriction()
-        }
+            }
     }
 
     /** Läuft im Ticker: Match vorbei, wenn die Match-Ansicht eine Weile fehlt. */
@@ -404,13 +402,7 @@ class TrackerService : Service(), OverlayController.Listener {
     private fun onDetected(name: String) {
         val p = state.cardPlayed(name, now())
         lastText = "Zuletzt: ${p.card} (${p.cost})"
-        updateRestriction()
         renderUi()
-    }
-
-    private fun updateRestriction() {
-        val deck = state.cycle.deck
-        analyzer?.restrictTo = if (state.cycle.deckComplete) deck.toSet() else null
     }
 
     private fun renderUi() {
