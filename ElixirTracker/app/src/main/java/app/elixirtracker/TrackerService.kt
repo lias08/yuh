@@ -300,6 +300,7 @@ class TrackerService : Service(), OverlayController.Listener {
         m.put(0, 0, bytes)
 
         val res = a.analyze(m, now)
+        if (res.interesting && prefs.saveDiagnostics) saveDiagnostic(m, res, now)
         main.post {
             onBattleState(res.battleVisible, now)
             if (res.lockedScale != prefs.lockedScale) prefs.lockedScale = res.lockedScale
@@ -307,6 +308,39 @@ class TrackerService : Service(), OverlayController.Listener {
             debugText = if (prefs.showDebug && res.bestName != null) {
                 String.format(Locale.US, "bester Treffer: %s %.0f%%", res.bestName, res.bestScore * 100)
             } else null
+        }
+    }
+
+    private var lastDiagMs = 0L
+    private var diagCount = 0
+
+    /** Speichert das (bereits maskierte) Bild nach Bilder/ElixirTracker – max. 40 pro Sitzung. Analyse-Thread. */
+    private fun saveDiagnostic(frame: Mat, res: ScreenAnalyzer.Result, now: Long) {
+        if (diagCount >= 40 || now - lastDiagMs < 2000) return
+        lastDiagMs = now
+        diagCount++
+        try {
+            val bmp = android.graphics.Bitmap.createBitmap(frame.cols(), frame.rows(), android.graphics.Bitmap.Config.ARGB_8888)
+            org.opencv.android.Utils.matToBitmap(frame, bmp)
+            val name = String.format(
+                Locale.US, "et_%d_%s_%02.0f.png",
+                System.currentTimeMillis(), (res.bestName ?: "none").replace(Regex("[^A-Za-z0-9]"), ""), res.bestScore * 100,
+            )
+            if (Build.VERSION.SDK_INT >= 29) {
+                val values = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name)
+                    put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
+                    put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/ElixirTracker")
+                }
+                val uri = contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return
+                contentResolver.openOutputStream(uri)?.use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            } else {
+                val dir = java.io.File(getExternalFilesDir(null), "diagnose").apply { mkdirs() }
+                java.io.File(dir, name).outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            }
+            bmp.recycle()
+        } catch (e: Exception) {
+            Log.w(TAG, "Diagnose-Bild fehlgeschlagen", e)
         }
     }
 

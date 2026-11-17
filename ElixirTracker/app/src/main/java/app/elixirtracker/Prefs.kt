@@ -11,14 +11,14 @@ class Prefs(ctx: Context) {
         get() = sp.getInt(KEY_ROI_TOP, 8)
         set(v) = sp.edit().putInt(KEY_ROI_TOP, v).apply()
     var roiBottom: Int
-        get() = sp.getInt(KEY_ROI_BOTTOM, 55)
+        get() = sp.getInt(KEY_ROI_BOTTOM, 62)
         set(v) = sp.edit().putInt(KEY_ROI_BOTTOM, v).apply()
     /** Erkennungs-Schwelle 50..99 (%). */
     var threshold: Int
-        get() = sp.getInt(KEY_THRESHOLD, 78)
+        get() = sp.getInt(KEY_THRESHOLD, 72)
         set(v) = sp.edit().putInt(KEY_THRESHOLD, v).apply()
     var intervalMs: Int
-        get() = sp.getInt(KEY_INTERVAL, 250)
+        get() = sp.getInt(KEY_INTERVAL, 150)
         set(v) = sp.edit().putInt(KEY_INTERVAL, v).apply()
     var showDebug: Boolean
         get() = sp.getBoolean(KEY_DEBUG, true)
@@ -52,7 +52,13 @@ class Prefs(ctx: Context) {
         get() = sp.getInt(KEY_LOCKED_SCALE, -1)
         set(v) = sp.edit().putInt(KEY_LOCKED_SCALE, v).apply()
 
+    /** Diagnose: Bilder von (unsicheren) Erkennungen in die Galerie speichern. */
+    var saveDiagnostics: Boolean
+        get() = sp.getBoolean(KEY_DIAG, false)
+        set(v) = sp.edit().putBoolean(KEY_DIAG, v).apply()
+
     companion object {
+        const val KEY_DIAG = "diagnostics"
         const val KEY_LOCKED_SCALE = "locked_scale"
         const val KEY_SCALE = "overlay_scale"
         const val KEY_OPACITY = "overlay_opacity"

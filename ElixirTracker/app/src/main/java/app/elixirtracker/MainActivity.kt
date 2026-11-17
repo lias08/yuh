@@ -120,10 +120,15 @@ class MainActivity : Activity() {
         col.addView(slider("Scan-Bereich oben", 0, 60, prefs.roiTop, "%") { prefs.roiTop = it })
         col.addView(slider("Scan-Bereich unten", 30, 100, prefs.roiBottom, "%") { prefs.roiBottom = it })
         col.addView(slider("Erkennungs-Schwelle", 50, 99, prefs.threshold, "%") { prefs.threshold = it })
-        col.addView(slider("Scan-Intervall", 100, 1000, prefs.intervalMs, " ms") { prefs.intervalMs = it })
+        col.addView(slider("Scan-Intervall", 80, 1000, prefs.intervalMs, " ms") { prefs.intervalMs = it })
         col.addView(button("Kalibrierung zurücksetzen") {
             prefs.lockedScale = -1
             Toast.makeText(this, "Die Karten-Größe wird im nächsten Match neu gesucht", Toast.LENGTH_SHORT).show()
+        })
+        col.addView(CheckBox(this).apply {
+            text = "Diagnose-Bilder speichern (Galerie → Bilder/ElixirTracker). Hilft beim Verbessern der Erkennung."
+            isChecked = prefs.saveDiagnostics
+            setOnCheckedChangeListener { _, c -> prefs.saveDiagnostics = c }
         })
         col.addView(CheckBox(this).apply {
             text = "Besten Treffer im Overlay anzeigen (zum Einstellen der Schwelle)"
