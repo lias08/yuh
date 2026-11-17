@@ -140,12 +140,8 @@ class MainActivity : Activity() {
         col.addView(text(
             "Du musst im Match nichts drücken: Start, Ende, x2 (ab 2:00), x3 (Verlängerung) und die Karten " +
                 "des Gegners werden automatisch erkannt. In den ersten Matches sucht die App einmalig, wie groß " +
-                "Karten auf deinem Bildschirm sind („kalibriert noch“) – danach erkennt sie jede Karte.
-
-" +
-                "Kopfzeile ziehen = Fenster verschieben, antippen = ein-/ausklappen, ✕ = beenden.
-
-" +
+                "Karten auf deinem Bildschirm sind („kalibriert noch“) – danach erkennt sie jede Karte.\n\n" +
+                "Kopfzeile ziehen = Fenster verschieben, antippen = ein-/ausklappen, ✕ = beenden.\n\n" +
                 "Hand-Logik: Die letzten 4 gespielten Karten sind nicht auf der Hand. Die älteste davon ist die " +
                 "nächste Karte (→). Sobald alle 8 Karten gesehen wurden, ist die Hand komplett bekannt.",
             small = true,
