@@ -1,0 +1,30 @@
+name: Build Elixir Tracker APK
+
+on:
+  push:
+    paths:
+      - "ElixirTracker/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ElixirTracker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - name: Build & test
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon testDebugUnitTest assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ElixirTracker-apk
+          path: ElixirTracker/app/build/outputs/apk/release/*.apk
