@@ -158,7 +158,7 @@ class TrackerService : Service(), OverlayController.Listener {
         val notif = Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_launcher)
             .setContentTitle("Elixir Tracker läuft")
-            .setContentText(if (withProjection) "Bildschirm-Scan aktiv" else "Manueller Modus")
+            .setContentText(if (withProjection) "Bildschirm-Scan aktiv" else "Startet …")
             .setContentIntent(openIntent)
             .addAction(Notification.Action.Builder(null, "Beenden", stopIntent).build())
             .setOngoing(true)
@@ -189,8 +189,6 @@ class TrackerService : Service(), OverlayController.Listener {
         return OverlayController(this, wm, this, look).also { o ->
             o.thumbnails = thumbnailCache
             o.costOf = ::costOf
-            o.allCards = if (bundled.isNotEmpty()) bundled.map { it.name to it.elixir }
-            else CardDatabase.cards.map { it.name to it.cost }
         }
     }
 
@@ -207,7 +205,7 @@ class TrackerService : Service(), OverlayController.Listener {
 
     private fun startCapture(resultCode: Int, data: Intent) {
         if (!OpenCVLoader.initLocal()) {
-            toast("OpenCV konnte nicht geladen werden – nur manueller Modus")
+            toast("OpenCV konnte nicht geladen werden – Erkennung nicht möglich")
             return
         }
         val templates = TemplateStore(this).all()
@@ -370,19 +368,14 @@ class TrackerService : Service(), OverlayController.Listener {
     private fun now() = SystemClock.elapsedRealtime()
 
     private fun onDetected(name: String) {
-        recordPlay(name, auto = true)
-    }
-
-    private fun recordPlay(name: String, auto: Boolean) {
         val p = state.cardPlayed(name, now())
-        lastText = "Zuletzt: ${p.card} (${p.cost})" + if (auto) " · erkannt" else " · manuell"
+        lastText = "Zuletzt: ${p.card} (${p.cost})"
         updateRestriction()
         renderUi()
     }
 
     private fun updateRestriction() {
         val deck = state.cycle.deck
-        overlay.setDeck(deck)
         analyzer?.restrictTo = if (state.cycle.deckComplete) deck.toSet() else null
     }
 
@@ -404,44 +397,12 @@ class TrackerService : Service(), OverlayController.Listener {
                     analyzer != null -> "Scan an" +
                         (if ((analyzer?.lockedScale ?: -1) < 0) " · kalibriert noch" else "") +
                         " · Deck ${state.cycle.deck.size}/8"
-                    else -> "Scan aus (manuell) · Deck ${state.cycle.deck.size}/8"
+                    else -> "Scan startet …"
                 },
                 debug = debugText,
             ),
         )
     }
-
-    override fun onStartPressed() {
-        autoRunning = false
-        state.start(now())
-        analyzer?.resetCooldowns()
-        lastText = "Match gestartet"
-        updateRestriction()
-        renderUi()
-    }
-
-    override fun onPhasePressed() {
-        state.engine.cycleMultiplier(now()); renderUi()
-    }
-
-    override fun onPhaseLongPressed() {
-        state.engine.resetMultiplierToAuto(now())
-        toast("Elixier-Phase wieder automatisch")
-        renderUi()
-    }
-
-    override fun onAdjust(delta: Double) {
-        state.engine.adjust(delta, now()); renderUi()
-    }
-
-    override fun onUndo() {
-        val p = state.undo(now())
-        lastText = if (p != null) "Rückgängig: ${p.card}" else "Nichts zum Rückgängigmachen"
-        updateRestriction()
-        renderUi()
-    }
-
-    override fun onCardChosen(name: String) = recordPlay(name, auto = false)
 
     override fun onCloseOverlay() {
         stopSelf()

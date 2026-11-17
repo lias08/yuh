@@ -69,12 +69,6 @@ class OverlayController(
     private val signY = if ((anchor.gravity and Gravity.VERTICAL_GRAVITY_MASK) == Gravity.BOTTOM) -1 else 1
 
     interface Listener {
-        fun onStartPressed()
-        fun onPhasePressed()
-        fun onPhaseLongPressed()
-        fun onAdjust(delta: Double)
-        fun onUndo()
-        fun onCardChosen(name: String)
         fun onCloseOverlay()
         fun onOverlayBoundsChanged()
         fun onOverlayMoved(x: Int, y: Int)
@@ -95,8 +89,6 @@ class OverlayController(
 
     var thumbnails: Map<String, Bitmap> = emptyMap()
     var costOf: (String) -> Int? = { CardDatabase.costOf(it) }
-    /** Alle Karten (Name, Elixier) für die manuelle Auswahl. */
-    var allCards: List<Pair<String, Int>> = CardDatabase.cards.map { it.name to it.cost }
 
     private val density = ctx.resources.displayMetrics.density
     private fun dp(v: Int) = (v * density * scale).toInt()
@@ -105,8 +97,7 @@ class OverlayController(
     private val details = LinearLayout(ctx)
     private val elixirText = TextView(ctx)
     private val timerText = TextView(ctx)
-    private val phaseBtn = button("x1") { listener.onPhasePressed() }
-    private val startBtn = button("▶ Start") { listener.onStartPressed() }
+    private val phaseBtn = button("x1") {}.apply { isClickable = false }
     private val minimizeBtn = button("–") { toggleMinimized() }
     private val bar = ElixirBarView(ctx)
     private val handSlots = List(4) { SlotView() }
@@ -115,7 +106,6 @@ class OverlayController(
     private val statusText = TextView(ctx)
     private var minimized = false
 
-    private var picker: View? = null
 
     private val params = WindowManager.LayoutParams(
         WindowManager.LayoutParams.WRAP_CONTENT,
@@ -179,7 +169,6 @@ class OverlayController(
             setTextColor(0xFFCCCCCC.toInt())
             text = "--:--"
         }
-        phaseBtn.setOnLongClickListener { listener.onPhaseLongPressed(); true }
         header.addView(elixirText)
         header.addView(phaseBtn, lp(ml = dp(6)))
         header.addView(timerText, lp(ml = dp(8)))
@@ -228,13 +217,6 @@ class OverlayController(
         lastText.apply { textSize = 11f * scale; setTextColor(0xFFDDDDDD.toInt()) }
         details.addView(lastText, lp().apply { topMargin = dp(4) })
 
-        val controls = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
-        controls.addView(startBtn)
-        controls.addView(button("−1") { listener.onAdjust(-1.0) }, lp(ml = dp(4)))
-        controls.addView(button("+1") { listener.onAdjust(1.0) }, lp(ml = dp(4)))
-        controls.addView(button("↶") { listener.onUndo() }, lp(ml = dp(4)))
-        controls.addView(button("＋Karte") { openPicker() }, lp(ml = dp(4)))
-        details.addView(controls, lp().apply { topMargin = dp(6) })
 
         statusText.apply { textSize = 10f * scale; setTextColor(0xFF999999.toInt()) }
         details.addView(statusText, lp().apply { topMargin = dp(4) })
@@ -243,7 +225,6 @@ class OverlayController(
         root.viewTreeObserver.addOnGlobalLayoutListener { listener.onOverlayBoundsChanged() }
     }
 
-    private var currentDeck: List<String> = emptyList()
 
     private fun label(t: String) = TextView(ctx).apply {
         text = t; textSize = 11f * scale; setTextColor(0xFFAAAAAA.toInt())
@@ -272,7 +253,6 @@ class OverlayController(
         init {
             view.addView(img, LinearLayout.LayoutParams(dp(34), dp(40)))
             view.addView(txt)
-            view.setOnClickListener { bound?.let { listener.onCardChosen(it) } }
         }
 
         fun bind(name: String?) {
@@ -298,7 +278,6 @@ class OverlayController(
     }
 
     fun hide() {
-        closePicker()
         runCatching { wm.removeView(root) }
     }
 
@@ -311,22 +290,17 @@ class OverlayController(
     fun render(ui: Ui) {
         elixirText.text = String.format(Locale.US, "%.1f", ui.elixir)
         bar.value = ui.elixir
-        phaseBtn.text = "x${ui.multiplier}" + if (ui.manualMultiplier) "*" else ""
+        phaseBtn.text = "x${ui.multiplier}"
         phaseBtn.setTextColor(
             when (ui.multiplier) {
                 1 -> 0xFFFFFFFF.toInt(); 2 -> 0xFFFFC94D.toInt(); else -> 0xFFFF6B6B.toInt()
             },
         )
-        timerText.text = if (!ui.running) "bereit" else formatTime(ui.elapsedSec)
-        startBtn.text = if (ui.running) "↺ Neu" else "▶ Start"
+        timerText.text = if (!ui.running) "warte auf Match" else formatTime(ui.elapsedSec)
         ui.hand.forEachIndexed { i, c -> handSlots[i].bind(c) }
         nextSlot.bind(ui.next)
         lastText.text = ui.last
         statusText.text = ui.scanStatus + (ui.debug?.let { " · $it" } ?: "")
-    }
-
-    fun setDeck(deck: List<String>) {
-        currentDeck = deck
     }
 
     private fun formatTime(elapsed: Double): String {
@@ -343,84 +317,12 @@ class OverlayController(
     /** Bildschirmbereiche unserer Fenster (werden beim Scannen ausgeblendet). */
     fun screenRects(): List<Rect> {
         val list = mutableListOf<Rect>()
-        for (v in listOfNotNull(root, picker)) {
+        for (v in listOf(root)) {
             if (!v.isAttachedToWindow || v.width == 0) continue
             val loc = IntArray(2)
             v.getLocationOnScreen(loc)
             list += Rect(loc[0], loc[1], loc[0] + v.width, loc[1] + v.height)
         }
         return list
-    }
-
-    // ---------------------------------------------------------------- Karten-Auswahl
-
-    private fun openPicker() {
-        if (picker != null) {
-            closePicker(); return
-        }
-        val dm = ctx.resources.displayMetrics
-        val panel = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            background = panelBg()
-            setPadding(dp(10), dp(8), dp(10), dp(8))
-        }
-        val head = LinearLayout(ctx).apply { gravity = Gravity.CENTER_VERTICAL }
-        head.addView(TextView(ctx).apply {
-            text = "Welche Karte hat der Gegner gespielt?"
-            setTextColor(0xFFFFFFFF.toInt()); textSize = 14f * scale
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        head.addView(button("✕") { closePicker() })
-        panel.addView(head)
-
-        val list = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        fun section(title: String, names: List<String>) {
-            if (names.isEmpty()) return
-            list.addView(TextView(ctx).apply {
-                text = title; setTextColor(0xFFE68CFF.toInt()); textSize = 12f * scale
-                setPadding(0, dp(8), 0, dp(2))
-            })
-            names.chunked(3).forEach { row ->
-                val r = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
-                row.forEach { n ->
-                    val cost = costOf(n)
-                    val label = if (cost == null || cost < 0) n else "$n ($cost)"
-                    r.addView(
-                        button(label) { listener.onCardChosen(n); closePicker() }.apply { textSize = 11f * scale },
-                        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                            setMargins(dp(2), dp(2), dp(2), dp(2))
-                        },
-                    )
-                }
-                repeat(3 - row.size) { r.addView(View(ctx), LinearLayout.LayoutParams(0, 1, 1f)) }
-                list.addView(r)
-            }
-        }
-        section("Bekanntes Deck", currentDeck)
-        val withTemplates = emptyList<String>()
-        val rest = allCards
-            .filter { it.first !in currentDeck && it.first !in withTemplates }
-            .sortedWith(compareBy({ if (CardDatabase.isMirror(it.first)) 99 else it.second }, { it.first }))
-            .map { it.first }
-        section("Alle Karten", rest)
-
-        val scroll = ScrollView(ctx).apply { addView(list) }
-        panel.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-
-        val p = WindowManager.LayoutParams(
-            (dm.widthPixels * 0.94).toInt(),
-            (dm.heightPixels * 0.6).toInt(),
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT,
-        ).apply { gravity = Gravity.CENTER }
-        wm.addView(panel, p)
-        picker = panel
-        listener.onOverlayBoundsChanged()
-    }
-
-    private fun closePicker() {
-        picker?.let { runCatching { wm.removeView(it) } }
-        picker = null
-        listener.onOverlayBoundsChanged()
     }
 }

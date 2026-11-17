@@ -23,7 +23,7 @@ Selbst bauen: `python3 tools/fetch_cards.py` (braucht Pillow), dann Android Stud
    in der Karten auf deinem Bildschirm erscheinen („kalibriert noch“), danach ist das gespeichert.
 
 ## Wie gerechnet wird
-- Start 5 Elixier, +1 alle 2,8 s, ab 2:00 Spielzeit doppelt (x2), x3 manuell, max. 10.
+- Start 5 Elixier, +1 alle 2,8 s, ab 2:00 Spielzeit doppelt (x2), ab 4:00 dreifach (x3), max. 10.
 - Gespielte Karte → Kosten werden abgezogen (Spiegel = letzte Karte + 1).
 - Zyklus: Die letzten 4 gespielten Karten sind nicht auf der Hand; die älteste davon kommt als nächstes.
   Nach 8 verschiedenen Karten ist das Deck bekannt, dann wird auch nur noch nach diesen 8 gesucht.
@@ -31,7 +31,7 @@ Selbst bauen: `python3 tools/fetch_cards.py` (braucht Pillow), dann Android Stud
 ## Grenzen
 - Die Erkennung ist nur so gut wie die Vorlagen. Mit „Besten Treffer anzeigen“ und der Schwelle (Standard 78 %)
   kalibrieren. Den Scan-Bereich so einstellen, dass deine eigene Kartenleiste unten **nicht** drin ist.
-- Elixiersammler, Elixir-Golem-Bonus, Helden-Fähigkeiten usw. werden nicht automatisch erfasst → −1/+1 benutzen.
+- Elixiersammler, Elixir-Golem-Bonus, Helden-Fähigkeiten usw. werden nicht erfasst.
 - Kartenkosten stehen in `app/src/main/java/app/elixirtracker/logic/CardDatabase.kt` und sind ggf. anzupassen.
 
 ## Projekt
@@ -39,4 +39,4 @@ Selbst bauen: `python3 tools/fetch_cards.py` (braucht Pillow), dann Android Stud
 - `ScreenAnalyzer.kt` – OpenCV-Erkennung
 - `TrackerService.kt` – Bildschirmaufnahme (MediaProjection) + Overlay-Steuerung
 - `OverlayController.kt` – schwebendes Fenster
-- `MainActivity.kt` – Einrichtung, Vorlagen-Import, Einstellungen
+- `MainActivity.kt` – Einrichtung und Einstellungen
