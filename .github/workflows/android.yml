@@ -7,6 +7,9 @@ on:
       - ".github/workflows/android.yml"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -24,7 +27,17 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon testDebugUnitTest assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk ElixirTracker.apk
       - uses: actions/upload-artifact@v4
         with:
           name: ElixirTracker-apk
-          path: ElixirTracker/app/build/outputs/apk/release/*.apk
+          path: ElixirTracker/ElixirTracker.apk
+      - name: Release mit APK veröffentlichen
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: elixir-tracker-latest
+          name: Elixir Tracker (neueste Version)
+          body: "ElixirTracker.apk herunterladen und auf dem Android-Handy installieren. Build von ${{ github.sha }}"
+          prerelease: true
+          make_latest: false
+          files: ElixirTracker/ElixirTracker.apk
