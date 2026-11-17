@@ -64,6 +64,8 @@ class ScreenAnalyzer(
         val bestName: String?,
         val bestScore: Double,
         val battleVisible: Boolean,
+        /** Elixier-Leiste eindeutig erkannt (für den Match-Start). */
+        val battleStrict: Boolean,
         val lockedScale: Int,
         /** Für Diagnose-Bilder: Frame enthielt einen unsicheren oder sicheren Treffer. */
         val interesting: Boolean,
@@ -101,7 +103,6 @@ class ScreenAnalyzer(
     private val prevGray = Mat()
     private val diff = Mat()
     private val hsv = Mat()
-    private val pinkMask = Mat()
     private val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0))
 
     private val hsvPatch = Mat()
@@ -205,10 +206,11 @@ class ScreenAnalyzer(
             )
         }
         val battle = battleUiVisible(rgba)
+        val strict = lastBarStrict
         Imgproc.cvtColor(rgba, gray, Imgproc.COLOR_RGBA2GRAY)
         if (!battle || prevGray.size() != gray.size()) {
             gray.copyTo(prevGray)
-            return Result(emptyList(), null, 0.0, battle, lockedScale, false)
+            return Result(emptyList(), null, 0.0, battle, strict, lockedScale, false)
         }
 
         val y0 = (gray.rows() * roiTop).toInt().coerceIn(0, gray.rows() - 1)
@@ -251,7 +253,7 @@ class ScreenAnalyzer(
             if (lockedScale < 0 && h.scaleIdx >= 0) lockedScale = h.scaleIdx
         }
         val interesting = b != null && b.score >= 0.5
-        return Result(detections, b?.name, b?.score ?: 0.0, true, lockedScale, interesting)
+        return Result(detections, b?.name, b?.score ?: 0.0, true, strict, lockedScale, interesting)
     }
 
     /** Rechtecke (Frame-Koordinaten), in denen sich seit dem letzten Bild viel geändert hat. */
@@ -349,23 +351,64 @@ class ScreenAnalyzer(
     }
 
     /**
-     * Im Match ist unten deine lila/pinke Elixier-Leiste zu sehen.
-     * Anteil kräftig magenta/lila Pixel (Farbton) im unteren Bildschirmstreifen.
+     * Erkennt deine Elixier-Leiste unten im Match (an echtem Screenshot vermessen):
+     * Mehrere Bildzeilen, die über fast die ganze Breite links PINK (Elixier) und
+     * rechts DUNKELBLAU (leer) sind – und zwar in genau dieser Reihenfolge.
+     * Im Menü gibt es dieses Muster nicht.
+     *
+     * Setzt [lastBarStrict] (sicher im Match) und gibt "lose" zurück (auch leere Leiste),
+     * damit ein laufendes Match bei 0 Elixier nicht als beendet gilt.
      */
+    private var stripBytes = ByteArray(0)
+    @Volatile var lastBarStrict = false
+        private set
+
     private fun battleUiVisible(rgba: Mat): Boolean {
-        val y0 = (rgba.rows() * 0.85).toInt()
-        val y1 = (rgba.rows() * 0.995).toInt()
-        if (y1 <= y0) return false
+        val y0 = (rgba.rows() * 0.90).toInt()
+        val y1 = rgba.rows()
+        if (y1 - y0 < 4) return false
         val strip = rgba.submat(y0, y1, 0, rgba.cols())
         val rgb = Mat()
         Imgproc.cvtColor(strip, rgb, Imgproc.COLOR_RGBA2RGB)
         Imgproc.cvtColor(rgb, hsv, Imgproc.COLOR_RGB2HSV)
-        rgb.release()
-        // OpenCV-Farbton 0..180: lila/magenta ≈ 130..170
-        Core.inRange(hsv, Scalar(130.0, 90.0, 110.0), Scalar(170.0, 255.0, 255.0), pinkMask)
-        val ratio = Core.countNonZero(pinkMask).toDouble() / (strip.rows() * strip.cols())
-        strip.release()
-        return ratio > 0.008
+        rgb.release(); strip.release()
+
+        val rows = hsv.rows()
+        val cols = hsv.cols()
+        val n = rows * cols * 3
+        if (stripBytes.size != n) stripBytes = ByteArray(n)
+        hsv.get(0, 0, stripBytes)
+
+        val xa = (cols * 0.32).toInt()
+        val xb = (cols * 0.93).toInt()
+        val span = (xb - xa).coerceAtLeast(1)
+        var barRows = 0
+        var emptyRows = 0
+        for (y in 0 until rows) {
+            var pink = 0
+            var navy = 0
+            var navyBeforeLastPink = 0
+            var navySoFar = 0
+            for (x in xa until xb) {
+                val i = (y * cols + x) * 3
+                val h = stripBytes[i].toInt() and 0xFF
+                val sat = stripBytes[i + 1].toInt() and 0xFF
+                val v = stripBytes[i + 2].toInt() and 0xFF
+                if (h in 130..170 && sat >= 90 && v >= 110) {
+                    pink++
+                    navyBeforeLastPink = navySoFar
+                } else if (h in 100..130 && v <= 120) {
+                    navy++
+                    navySoFar++
+                }
+            }
+            val cover = (pink + navy).toDouble() / span
+            if (cover >= 0.8 && pink >= span * 0.03 && navyBeforeLastPink <= span * 0.03) barRows++
+            if (navy >= span * 0.85) emptyRows++
+        }
+        // Leiste ist dünn (max. ~1/3 des Streifens) und hat dunkelblaue Ränder oben/unten
+        lastBarStrict = barRows >= 4 && barRows <= rows * 0.35 && emptyRows >= 2
+        return lastBarStrict || emptyRows >= 6
     }
 
     private fun overlaps(a: Hit, b: Hit): Boolean {
@@ -383,6 +426,6 @@ class ScreenAnalyzer(
         }
         hsvPatch.release(); rgbPatch.release()
         exact.forEach { it.mat.release() }
-        listOf(gray, prevGray, diff, hsv, pinkMask, kernel).forEach { it.release() }
+        listOf(gray, prevGray, diff, hsv, kernel).forEach { it.release() }
     }
 }

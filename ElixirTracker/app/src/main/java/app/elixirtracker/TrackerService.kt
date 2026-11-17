@@ -301,7 +301,7 @@ class TrackerService : Service(), OverlayController.Listener {
         val res = a.analyze(m, now)
         if (res.interesting && prefs.saveDiagnostics) saveDiagnostic(m, res, now)
         main.post {
-            onBattleState(res.battleVisible, now)
+            onBattleState(res.battleVisible, res.battleStrict, now)
             if (res.lockedScale != prefs.lockedScale) prefs.lockedScale = res.lockedScale
             for (name in res.detections) onDetected(name)
             debugText = if (prefs.showDebug && res.bestName != null) {
@@ -364,11 +364,19 @@ class TrackerService : Service(), OverlayController.Listener {
         templateCosts[name] ?: bundledCosts[name] ?: CardDatabase.costOf(name)
 
     /** Läuft im Main-Thread nach jedem analysierten Frame. */
-    private fun onBattleState(visible: Boolean, now: Long) {
-        if (!visible) return
-        if (now - battleLastSeen > endGapMs) battleFirstSeen = now // Match-Ansicht neu erschienen
-        battleLastSeen = now
-        if (!state.engine.running && !autoRunning && now - battleFirstSeen >= 1000) {
+    private var strictSince = 0L
+    private var strictLast = 0L
+
+    private fun onBattleState(visible: Boolean, strict: Boolean, now: Long) {
+        // Start nur, wenn die Elixier-Leiste ~2 s lang eindeutig zu sehen ist
+        if (strict) {
+            if (now - strictLast > 1000) strictSince = now
+            strictLast = now
+        }
+        if (visible && autoRunning) battleLastSeen = now
+        if (!state.engine.running && !autoRunning && strict && now - strictSince >= 2000) {
+            battleFirstSeen = strictSince
+            battleLastSeen = now
             autoRunning = true
             state.start(battleFirstSeen)
             state.engine.update(now)
@@ -400,6 +408,7 @@ class TrackerService : Service(), OverlayController.Listener {
     private fun now() = SystemClock.elapsedRealtime()
 
     private fun onDetected(name: String) {
+        if (!state.engine.running) return // außerhalb eines Matches nichts zählen
         val p = state.cardPlayed(name, now())
         lastText = "Zuletzt: ${p.card} (${p.cost})"
         renderUi()
