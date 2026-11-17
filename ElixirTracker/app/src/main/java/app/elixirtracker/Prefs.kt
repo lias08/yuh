@@ -59,7 +59,7 @@ class Prefs(ctx: Context) {
 
     companion object {
         const val KEY_DIAG = "diagnostics"
-        const val KEY_LOCKED_SCALE = "locked_scale"
+        const val KEY_LOCKED_SCALE = "locked_scale_v2"
         const val KEY_SCALE = "overlay_scale"
         const val KEY_OPACITY = "overlay_opacity"
         const val KEY_ANCHOR = "overlay_anchor"
