@@ -24,7 +24,50 @@ class OverlayController(
     private val ctx: Context,
     private val wm: WindowManager,
     private val listener: Listener,
+    private val look: Look = Look(),
 ) {
+    /** Aussehen/Position aus den Einstellungen. */
+    data class Look(
+        val scale: Float = 1f,
+        val opacity: Float = 0.9f,
+        val anchor: String = Anchor.TOP_LEFT.name,
+        val x: Int = 0,
+        val y: Int = 0,
+    )
+
+    enum class Anchor(val label: String, val gravity: Int) {
+        TOP_LEFT("Oben links", Gravity.TOP or Gravity.LEFT),
+        TOP_CENTER("Oben Mitte", Gravity.TOP or Gravity.CENTER_HORIZONTAL),
+        TOP_RIGHT("Oben rechts", Gravity.TOP or Gravity.RIGHT),
+        MID_LEFT("Mitte links", Gravity.CENTER_VERTICAL or Gravity.LEFT),
+        MID_RIGHT("Mitte rechts", Gravity.CENTER_VERTICAL or Gravity.RIGHT),
+        BOTTOM_LEFT("Unten links", Gravity.BOTTOM or Gravity.LEFT),
+        BOTTOM_RIGHT("Unten rechts", Gravity.BOTTOM or Gravity.RIGHT);
+
+        companion object {
+            fun of(name: String) = entries.firstOrNull { it.name == name } ?: TOP_LEFT
+        }
+    }
+
+    companion object {
+        /** Standard-Abstand vom Rand für eine Ecke (px). */
+        fun defaultOffset(anchor: Anchor, density: Float): Pair<Int, Int> {
+            val x = if (anchor == Anchor.TOP_CENTER) 0 else (6 * density).toInt()
+            val y = when (anchor.gravity and Gravity.VERTICAL_GRAVITY_MASK) {
+                Gravity.TOP -> (70 * density).toInt()      // unter Statusleiste/Gegnername
+                Gravity.BOTTOM -> (190 * density).toInt()  // über deiner Kartenleiste
+                else -> 0
+            }
+            return x to y
+        }
+    }
+
+    private val anchor = Anchor.of(look.anchor)
+    private val scale = look.scale
+    /** Beim Ziehen: rechts/unten verankerte Fenster zählen x/y vom rechten/unteren Rand. */
+    private val signX = if ((anchor.gravity and Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.RIGHT) -1 else 1
+    private val signY = if ((anchor.gravity and Gravity.VERTICAL_GRAVITY_MASK) == Gravity.BOTTOM) -1 else 1
+
     interface Listener {
         fun onStartPressed()
         fun onPhasePressed()
@@ -34,6 +77,7 @@ class OverlayController(
         fun onCardChosen(name: String)
         fun onCloseOverlay()
         fun onOverlayBoundsChanged()
+        fun onOverlayMoved(x: Int, y: Int)
     }
 
     data class Ui(
@@ -53,7 +97,7 @@ class OverlayController(
     var costOf: (String) -> Int? = { CardDatabase.costOf(it) }
 
     private val density = ctx.resources.displayMetrics.density
-    private fun dp(v: Int) = (v * density).toInt()
+    private fun dp(v: Int) = (v * density * scale).toInt()
 
     private val root = LinearLayout(ctx)
     private val details = LinearLayout(ctx)
@@ -78,9 +122,9 @@ class OverlayController(
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
         PixelFormat.TRANSLUCENT,
     ).apply {
-        gravity = Gravity.TOP or Gravity.START
-        x = dp(6)
-        y = dp(90)
+        gravity = anchor.gravity
+        x = look.x
+        y = look.y
     }
 
     init {
@@ -98,7 +142,7 @@ class OverlayController(
     private fun button(text: String, onClick: () -> Unit): TextView = TextView(ctx).apply {
         this.text = text
         setTextColor(0xFFFFFFFF.toInt())
-        textSize = 13f
+        textSize = 13f * scale
         gravity = Gravity.CENTER
         setPadding(dp(8), dp(4), dp(8), dp(4))
         background = GradientDrawable().apply {
@@ -114,6 +158,7 @@ class OverlayController(
     private fun buildUi() {
         root.orientation = LinearLayout.VERTICAL
         root.background = panelBg()
+        root.alpha = look.opacity
         root.setPadding(dp(8), dp(6), dp(8), dp(8))
 
         // Kopfzeile (zum Verschieben anfassen)
@@ -122,13 +167,13 @@ class OverlayController(
             gravity = Gravity.CENTER_VERTICAL
         }
         elixirText.apply {
-            textSize = 26f
+            textSize = 26f * scale
             setTextColor(0xFFE68CFF.toInt())
             text = "5.0"
             minWidth = dp(52)
         }
         timerText.apply {
-            textSize = 13f
+            textSize = 13f * scale
             setTextColor(0xFFCCCCCC.toInt())
             text = "--:--"
         }
@@ -149,12 +194,13 @@ class OverlayController(
                         sx = e.rawX; sy = e.rawY; px = params.x; py = params.y
                     }
                     MotionEvent.ACTION_MOVE -> {
-                        params.x = px + (e.rawX - sx).toInt()
-                        params.y = py + (e.rawY - sy).toInt()
+                        params.x = px + signX * (e.rawX - sx).toInt()
+                        params.y = py + signY * (e.rawY - sy).toInt()
                         wm.updateViewLayout(root, params)
                     }
                     MotionEvent.ACTION_UP -> {
                         if (abs(e.rawX - sx) < dp(4) && abs(e.rawY - sy) < dp(4)) toggleMinimized()
+                        listener.onOverlayMoved(params.x, params.y)
                         listener.onOverlayBoundsChanged()
                     }
                 }
@@ -177,7 +223,7 @@ class OverlayController(
         nextSlot.view.alpha = 0.7f
         details.addView(handRow, lp().apply { topMargin = dp(6) })
 
-        lastText.apply { textSize = 11f; setTextColor(0xFFDDDDDD.toInt()) }
+        lastText.apply { textSize = 11f * scale; setTextColor(0xFFDDDDDD.toInt()) }
         details.addView(lastText, lp().apply { topMargin = dp(4) })
 
         val controls = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
@@ -188,7 +234,7 @@ class OverlayController(
         controls.addView(button("＋Karte") { openPicker() }, lp(ml = dp(4)))
         details.addView(controls, lp().apply { topMargin = dp(6) })
 
-        statusText.apply { textSize = 10f; setTextColor(0xFF999999.toInt()) }
+        statusText.apply { textSize = 10f * scale; setTextColor(0xFF999999.toInt()) }
         details.addView(statusText, lp().apply { topMargin = dp(4) })
 
         root.addView(details)
@@ -198,7 +244,7 @@ class OverlayController(
     private var currentDeck: List<String> = emptyList()
 
     private fun label(t: String) = TextView(ctx).apply {
-        text = t; textSize = 11f; setTextColor(0xFFAAAAAA.toInt())
+        text = t; textSize = 11f * scale; setTextColor(0xFFAAAAAA.toInt())
     }
 
     private inner class SlotView {
@@ -213,7 +259,7 @@ class OverlayController(
         }
         private val img = ImageView(ctx)
         private val txt = TextView(ctx).apply {
-            textSize = 9f
+            textSize = 9f * scale
             setTextColor(0xFFFFFFFF.toInt())
             gravity = Gravity.CENTER
             maxLines = 2
@@ -319,7 +365,7 @@ class OverlayController(
         val head = LinearLayout(ctx).apply { gravity = Gravity.CENTER_VERTICAL }
         head.addView(TextView(ctx).apply {
             text = "Welche Karte hat der Gegner gespielt?"
-            setTextColor(0xFFFFFFFF.toInt()); textSize = 14f
+            setTextColor(0xFFFFFFFF.toInt()); textSize = 14f * scale
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         head.addView(button("✕") { closePicker() })
         panel.addView(head)
@@ -328,7 +374,7 @@ class OverlayController(
         fun section(title: String, names: List<String>) {
             if (names.isEmpty()) return
             list.addView(TextView(ctx).apply {
-                text = title; setTextColor(0xFFE68CFF.toInt()); textSize = 12f
+                text = title; setTextColor(0xFFE68CFF.toInt()); textSize = 12f * scale
                 setPadding(0, dp(8), 0, dp(2))
             })
             names.chunked(3).forEach { row ->
@@ -337,7 +383,7 @@ class OverlayController(
                     val cost = costOf(n)
                     val label = if (cost == null || cost < 0) n else "$n ($cost)"
                     r.addView(
-                        button(label) { listener.onCardChosen(n); closePicker() }.apply { textSize = 11f },
+                        button(label) { listener.onCardChosen(n); closePicker() }.apply { textSize = 11f * scale },
                         LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
                             setMargins(dp(2), dp(2), dp(2), dp(2))
                         },

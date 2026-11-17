@@ -68,7 +68,10 @@ class TrackerService : Service(), OverlayController.Listener {
     private var screenW = 0
     private var screenH = 0
 
-    private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> applyPrefs() }
+    private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key in Prefs.OVERLAY_REBUILD_KEYS) rebuildOverlay() else applyPrefs()
+    }
+    private var thumbnailCache: Map<String, android.graphics.Bitmap> = emptyMap()
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -88,9 +91,8 @@ class TrackerService : Service(), OverlayController.Listener {
         templateCosts = store.all().associate { it.name to it.cost }
         state = MatchState { name -> templateCosts[name] ?: CardDatabase.costOf(name) }
 
-        overlay = OverlayController(this, wm, this)
-        overlay.thumbnails = store.thumbnails((40 * resources.displayMetrics.density).toInt())
-        overlay.costOf = { name -> templateCosts[name] ?: CardDatabase.costOf(name) }
+        thumbnailCache = store.thumbnails((40 * resources.displayMetrics.density).toInt())
+        overlay = createOverlay()
         overlay.show()
 
         prefs.sp.registerOnSharedPreferenceChangeListener(prefListener)
@@ -153,6 +155,31 @@ class TrackerService : Service(), OverlayController.Listener {
             )
             else -> startForeground(NOTIF_ID, notif)
         }
+    }
+
+    private fun createOverlay(): OverlayController {
+        val anchor = OverlayController.Anchor.of(prefs.overlayAnchor)
+        val (dx, dy) = OverlayController.defaultOffset(anchor, resources.displayMetrics.density)
+        val look = OverlayController.Look(
+            scale = prefs.overlayScale / 100f,
+            opacity = prefs.overlayOpacity / 100f,
+            anchor = anchor.name,
+            x = prefs.overlayX.takeIf { it >= 0 } ?: dx,
+            y = prefs.overlayY.takeIf { it >= 0 } ?: dy,
+        )
+        return OverlayController(this, wm, this, look).also { o ->
+            o.thumbnails = thumbnailCache
+            o.costOf = { name -> templateCosts[name] ?: CardDatabase.costOf(name) }
+        }
+    }
+
+    /** Größe/Position/Transparenz geändert -> Fenster neu aufbauen (Match-Daten bleiben). */
+    private fun rebuildOverlay() {
+        overlay.hide()
+        overlay = createOverlay()
+        overlay.show()
+        updateRestriction()
+        renderUi()
     }
 
     // ------------------------------------------------------------------ Bildschirmaufnahme
@@ -354,6 +381,10 @@ class TrackerService : Service(), OverlayController.Listener {
 
     override fun onCloseOverlay() {
         stopSelf()
+    }
+
+    override fun onOverlayMoved(x: Int, y: Int) {
+        prefs.saveDraggedPosition(x, y)
     }
 
     override fun onOverlayBoundsChanged() {

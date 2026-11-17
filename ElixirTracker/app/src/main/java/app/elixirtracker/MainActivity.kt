@@ -112,7 +112,38 @@ class MainActivity : Activity() {
         templateList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         col.addView(templateList)
 
-        col.addView(heading("4. Erkennung einstellen"))
+        col.addView(heading("4. Overlay: Größe & Position"))
+        col.addView(text(
+            "Wird sofort übernommen, wenn der Tracker läuft. Feinjustieren: Kopfzeile im Overlay mit dem Finger ziehen.",
+            small = true,
+        ))
+        col.addView(slider("Größe", 50, 200, prefs.overlayScale, "%") { prefs.overlayScale = it })
+        col.addView(slider("Deckkraft", 30, 100, prefs.overlayOpacity, "%") { prefs.overlayOpacity = it })
+        col.addView(text("Position auf dem Bildschirm:"))
+        positionButtons = OverlayController.Anchor.entries.map { a ->
+            button(a.label) {
+                prefs.setOverlayPosition(a.name, -1, -1) // -1 = Standard-Abstand für diese Ecke
+                refreshPositionButtons()
+            }
+        }
+        // Raster wie der Bildschirm: oben / mitte / unten
+        val grid = listOf(
+            listOf("TOP_LEFT", "TOP_CENTER", "TOP_RIGHT"),
+            listOf("MID_LEFT", "", "MID_RIGHT"),
+            listOf("BOTTOM_LEFT", "", "BOTTOM_RIGHT"),
+        )
+        for (row in grid) {
+            val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            for (name in row) {
+                val idx = OverlayController.Anchor.entries.indexOfFirst { it.name == name }
+                val v: View = if (idx >= 0) positionButtons[idx] else View(this)
+                r.addView(v, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            }
+            col.addView(r)
+        }
+        refreshPositionButtons()
+
+        col.addView(heading("5. Erkennung einstellen"))
         col.addView(slider("Scan-Bereich oben", 0, 60, prefs.roiTop, "%") { prefs.roiTop = it })
         col.addView(slider("Scan-Bereich unten", 30, 100, prefs.roiBottom, "%") { prefs.roiBottom = it })
         col.addView(slider("Erkennungs-Schwelle", 50, 99, prefs.threshold, "%") { prefs.threshold = it })
@@ -180,6 +211,16 @@ class MainActivity : Activity() {
         box.addView(lbl)
         box.addView(sb)
         return box
+    }
+
+    private var positionButtons: List<Button> = emptyList()
+
+    private fun refreshPositionButtons() {
+        val current = prefs.overlayAnchor
+        OverlayController.Anchor.entries.forEachIndexed { i, a ->
+            val b = positionButtons.getOrNull(i) ?: return@forEachIndexed
+            b.text = if (a.name == current) "● ${a.label}" else a.label
+        }
     }
 
     private fun refreshOverlayStatus() {

@@ -18,7 +18,9 @@ Selbst bauen: Android Studio öffnen → Ordner `ElixirTracker` → Run.
    Karten-Symbol über der platzierten Karte), in der Galerie eng zuschneiden und die Datei nach der Karte benennen
    (`Hog Rider.png`, `Schweinereiter.png` oder `Name_4.png` mit Kosten). In der App → **Bilder importieren**.
 3. **Starten mit Bildschirm-Scan** → Aufnahme erlauben → Clash Royale öffnen.
-4. Beim Match-Beginn im Overlay **▶ Start** drücken.
+4. Unter **Overlay: Größe & Position** Größe (50–200 %), Deckkraft und Bildschirm-Ecke wählen –
+   wird live übernommen. Feinjustieren durch Ziehen der Kopfzeile (Position wird gespeichert).
+5. Beim Match-Beginn im Overlay **▶ Start** drücken.
 
 ## Wie gerechnet wird
 - Start 5 Elixier, +1 alle 2,8 s, ab 2:00 Spielzeit doppelt (x2), x3 manuell, max. 10.
