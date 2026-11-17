@@ -1,7 +1,10 @@
 # Elixir Tracker (Android)
 
 Overlay-App für Clash Royale: schätzt das **Elixier des Gegners** und zeigt seine **Hand-Karten** (+ nächste Karte) an.
-Gegnerische Karten werden per Bildschirm-Scan (OpenCV Template-Matching) erkannt oder manuell eingetragen.
+Alles läuft automatisch: Match-Start/-Ende, Elixier-Phasen (x2 ab 2:00, x3 in der Verlängerung) und die
+gegnerischen Karten (Bildschirm-Scan mit OpenCV). Alle 120 Karten (Bild + Elixierkosten) werden beim Bauen aus
+[RoyaleAPI/cr-api-data](https://github.com/RoyaleAPI/cr-api-data) und
+[RoyaleAPI/cr-api-assets](https://github.com/RoyaleAPI/cr-api-assets) geladen (`tools/fetch_cards.py`).
 
 > ⚠️ Hilfs-Tools während eines Matches verstoßen wahrscheinlich gegen Supercells Nutzungsbedingungen.
 > Nutzung auf eigenes Risiko – am besten nicht mit dem Hauptaccount.
@@ -10,17 +13,14 @@ Gegnerische Karten werden per Bildschirm-Scan (OpenCV Template-Matching) erkannt
 GitHub → **Actions** → „Build Elixir Tracker APK“ → letzter Lauf → Artifact **ElixirTracker-apk** herunterladen,
 entpacken, die `.apk` aufs Handy kopieren und installieren („Unbekannte Apps installieren“ erlauben).
 
-Selbst bauen: Android Studio öffnen → Ordner `ElixirTracker` → Run.
+Selbst bauen: `python3 tools/fetch_cards.py` (braucht Pillow), dann Android Studio → Ordner `ElixirTracker` → Run.
 
 ## Einrichtung
 1. App öffnen → **Overlay-Berechtigung** erteilen.
-2. **Karten-Vorlagen** anlegen: Im Match Screenshot machen, wenn der Gegner eine Karte spielt (das kleine
-   Karten-Symbol über der platzierten Karte), in der Galerie eng zuschneiden und die Datei nach der Karte benennen
-   (`Hog Rider.png`, `Schweinereiter.png` oder `Name_4.png` mit Kosten). In der App → **Bilder importieren**.
-3. **Starten mit Bildschirm-Scan** → Aufnahme erlauben → Clash Royale öffnen.
-4. Unter **Overlay: Größe & Position** Größe (50–200 %), Deckkraft und Bildschirm-Ecke wählen –
-   wird live übernommen. Feinjustieren durch Ziehen der Kopfzeile (Position wird gespeichert).
-5. Beim Match-Beginn im Overlay **▶ Start** drücken.
+2. Optional: Größe, Deckkraft und Position des Overlays wählen.
+3. **Starten mit Bildschirm-Scan** → Aufnahme erlauben → Clash Royale öffnen und spielen.
+   Im Match musst du nichts drücken. In den ersten Matches sucht die App einmal die Größe,
+   in der Karten auf deinem Bildschirm erscheinen („kalibriert noch“), danach ist das gespeichert.
 
 ## Wie gerechnet wird
 - Start 5 Elixier, +1 alle 2,8 s, ab 2:00 Spielzeit doppelt (x2), x3 manuell, max. 10.

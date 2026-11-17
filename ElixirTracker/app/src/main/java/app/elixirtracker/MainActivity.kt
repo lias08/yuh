@@ -71,7 +71,8 @@ class MainActivity : Activity() {
             setTypeface(typeface, Typeface.BOLD)
         })
         col.addView(text(
-            "Schätzt das Elixier des Gegners und zeigt seine Hand-Karten an. " +
+            "Erkennt automatisch, wann ein Match beginnt und welche Karten der Gegner spielt, " +
+                "und zeigt sein Elixier und seine Hand-Karten als Overlay über Clash Royale. " +
                 "Hinweis: Hilfs-Tools während eines Matches können gegen die Nutzungsbedingungen von Supercell " +
                 "verstoßen. Nutzung auf eigenes Risiko.",
             small = true,
@@ -91,12 +92,11 @@ class MainActivity : Activity() {
             startService(Intent(this, TrackerService::class.java).setAction(TrackerService.ACTION_STOP))
         })
 
-        col.addView(heading("3. Karten-Vorlagen"))
+        col.addView(heading("3. Eigene Karten-Bilder (optional)"))
         col.addView(text(
-            "Für die automatische Erkennung braucht die App ein Bild jeder Karte, so wie es erscheint, " +
-                "wenn der GEGNER sie ausspielt. Mach im Match einen Screenshot, schneide das Karten-Symbol in der " +
-                "Galerie aus und benenne die Datei nach der Karte, z.B. „Hog Rider.png“, „Schweinereiter.png“ " +
-                "oder mit Kosten „Meine Karte_4.png“. Wichtig: Screenshots von DIESEM Handy verwenden.",
+            "Alle ${BundledCards.load(this).size} Karten sind schon eingebaut – normalerweise musst du hier nichts tun. " +
+                "Falls eine Karte nicht erkannt wird, kannst du einen Screenshot-Ausschnitt importieren " +
+                "(Dateiname = Kartenname, z.B. „Hog Rider.png“). Eigene Bilder haben Vorrang.",
             small = true,
         ))
         col.addView(button("Bilder importieren …") {
@@ -148,6 +148,10 @@ class MainActivity : Activity() {
         col.addView(slider("Scan-Bereich unten", 30, 100, prefs.roiBottom, "%") { prefs.roiBottom = it })
         col.addView(slider("Erkennungs-Schwelle", 50, 99, prefs.threshold, "%") { prefs.threshold = it })
         col.addView(slider("Scan-Intervall", 100, 1000, prefs.intervalMs, " ms") { prefs.intervalMs = it })
+        col.addView(button("Kalibrierung zurücksetzen") {
+            prefs.lockedScale = -1
+            Toast.makeText(this, "Die Karten-Größe wird im nächsten Match neu gesucht", Toast.LENGTH_SHORT).show()
+        })
         col.addView(CheckBox(this).apply {
             text = "Besten Treffer im Overlay anzeigen (zum Einstellen der Schwelle)"
             isChecked = prefs.showDebug
@@ -156,8 +160,12 @@ class MainActivity : Activity() {
 
         col.addView(heading("Bedienung im Overlay"))
         col.addView(text(
-            "• ▶ Start sofort drücken, wenn das Match beginnt (Gegner hat dann 5 Elixier).\n" +
-                "• x1/x2/x3: Elixier-Phase. Ab 2:00 automatisch x2. Tippen = manuell wechseln, " +
+            "Du musst im Match nichts drücken: Start, Ende, x2 (ab 2:00) und x3 (Verlängerung) laufen automatisch. " +
+                "In den ersten Matches sucht die App einmalig, wie groß Karten auf deinem Bildschirm sind " +
+                "(„kalibriert noch“) – danach erkennt sie jede Karte.\n\n" +
+                "Optional:\n" +
+                "• ▶/↺: Match manuell (neu) starten.\n" +
+                "• x1/x2/x3: Elixier-Phase. Tippen = manuell wechseln, " +
                 "lange drücken = zurück auf automatisch.\n" +
                 "• −1 / +1: Schätzung korrigieren.\n" +
                 "• Hand-Karte antippen = Gegner hat sie gespielt (manuell).\n" +

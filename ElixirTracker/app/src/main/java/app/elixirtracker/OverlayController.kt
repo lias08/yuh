@@ -95,6 +95,8 @@ class OverlayController(
 
     var thumbnails: Map<String, Bitmap> = emptyMap()
     var costOf: (String) -> Int? = { CardDatabase.costOf(it) }
+    /** Alle Karten (Name, Elixier) für die manuelle Auswahl. */
+    var allCards: List<Pair<String, Int>> = CardDatabase.cards.map { it.name to it.cost }
 
     private val density = ctx.resources.displayMetrics.density
     private fun dp(v: Int) = (v * density * scale).toInt()
@@ -394,12 +396,11 @@ class OverlayController(
             }
         }
         section("Bekanntes Deck", currentDeck)
-        val withTemplates = thumbnails.keys.filter { it !in currentDeck }.sorted()
-        section("Mit Vorlage", withTemplates)
-        val rest = CardDatabase.cards
-            .filter { it.name !in currentDeck && it.name !in withTemplates }
-            .sortedWith(compareBy({ if (it.cost < 0) 99 else it.cost }, { it.name }))
-            .map { it.name }
+        val withTemplates = emptyList<String>()
+        val rest = allCards
+            .filter { it.first !in currentDeck && it.first !in withTemplates }
+            .sortedWith(compareBy({ if (CardDatabase.isMirror(it.first)) 99 else it.second }, { it.first }))
+            .map { it.first }
         section("Alle Karten", rest)
 
         val scroll = ScrollView(ctx).apply { addView(list) }

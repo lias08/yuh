@@ -26,6 +26,16 @@ class LogicTest {
         assertEquals(2, e.multiplier(121_800))
     }
 
+    @Test fun tripleElixirInOvertime() {
+        val e = ElixirEngine()
+        e.start(0)
+        e.spend(10, 239_000)
+        assertEquals(2, e.multiplier(239_000))
+        // 1 s mit x2, danach 1 s mit x3
+        assertEquals(2.0 / 2.8 + 3.0 / 2.8, e.update(241_000), eps)
+        assertEquals(3, e.multiplier(241_000))
+    }
+
     @Test fun manualMultiplierCycles() {
         val e = ElixirEngine()
         e.start(0)

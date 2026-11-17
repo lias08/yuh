@@ -23,6 +23,10 @@ jobs:
           distribution: temurin
           java-version: "17"
       # Android SDK ist auf ubuntu-latest vorinstalliert (ANDROID_HOME)
+      - name: Kartenbilder + Elixierkosten laden (RoyaleAPI)
+        run: |
+          pip install --quiet pillow
+          python3 tools/fetch_cards.py
       - name: Build & test
         run: |
           chmod +x gradlew

@@ -7,14 +7,17 @@ import kotlin.math.min
  * Schätzt das Elixier des Gegners anhand der Zeit.
  *
  * - Start: 5 Elixier, Maximum 10
- * - 1 Elixier alle 2,8 s (x1), doppelt so schnell ab Minute 2 (x2)
- * - x3 (Dreifach-Elixier) wird manuell gesetzt
+ * - 1 Elixier alle 2,8 s (x1)
+ * - ab 2:00 Spielzeit doppelt (x2, letzte Minute der regulären Zeit)
+ * - ab 4:00 Spielzeit dreifach (x3, Verlängerung)
+ * - manuell überschreibbar
  */
 class ElixirEngine(
     val secondsPerElixir: Double = 2.8,
     val maxElixir: Double = 10.0,
     val startElixir: Double = 5.0,
     val doubleElixirAfterSec: Double = 120.0,
+    val tripleElixirAfterSec: Double = 240.0,
 ) {
     var elixir: Double = startElixir
         private set
@@ -41,22 +44,35 @@ class ElixirEngine(
 
     fun elapsedSec(nowMs: Long): Double = if (running) (nowMs - startMs) / 1000.0 else 0.0
 
-    fun multiplier(nowMs: Long): Int =
-        manualMultiplier ?: if (elapsedSec(nowMs) >= doubleElixirAfterSec) 2 else 1
+    fun multiplier(nowMs: Long): Int = manualMultiplier ?: autoMultiplier(elapsedSec(nowMs))
+
+    private fun autoMultiplier(elapsed: Double): Int = when {
+        elapsed >= tripleElixirAfterSec -> 3
+        elapsed >= doubleElixirAfterSec -> 2
+        else -> 1
+    }
 
     /** Bringt die Schätzung auf den Zeitpunkt [nowMs] und gibt sie zurück. */
     fun update(nowMs: Long): Double {
         if (!running || nowMs <= lastMs) return elixir
         var t = lastMs
-        val doubleAt = startMs + (doubleElixirAfterSec * 1000).toLong()
-        if (manualMultiplier == null && t < doubleAt && nowMs > doubleAt) {
-            gain(doubleAt - t, 1)
-            t = doubleAt
+        if (manualMultiplier == null) {
+            // Phasenwechsel innerhalb des Intervalls exakt berücksichtigen
+            for (sec in listOf(doubleElixirAfterSec, tripleElixirAfterSec)) {
+                val at = startMs + (sec * 1000).toLong()
+                if (t < at && nowMs > at) {
+                    gain(at - t, autoMultiplier((t - startMs) / 1000.0))
+                    t = at
+                }
+            }
+            gain(nowMs - t, autoMultiplier((t - startMs) / 1000.0))
+        } else {
+            gain(nowMs - t, manualMultiplier!!)
         }
-        gain(nowMs - t, multiplier(nowMs))
         lastMs = nowMs
         return elixir
     }
+
 
     private fun gain(ms: Long, mult: Int) {
         elixir = min(maxElixir, elixir + ms / 1000.0 / secondsPerElixir * mult)

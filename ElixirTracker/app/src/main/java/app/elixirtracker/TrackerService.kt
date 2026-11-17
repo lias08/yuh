@@ -28,7 +28,6 @@ import app.elixirtracker.logic.MatchState
 import org.opencv.android.OpenCVLoader
 import org.opencv.core.CvType
 import org.opencv.core.Mat
-import org.opencv.imgproc.Imgproc
 import java.util.Locale
 
 class TrackerService : Service(), OverlayController.Listener {
@@ -61,7 +60,15 @@ class TrackerService : Service(), OverlayController.Listener {
     private var lastFrameMs = 0L
     private var frameBytes: ByteArray? = null
     private var rgba: Mat? = null
-    private val gray = Mat()
+
+    private var bundled: List<BundledCard> = emptyList()
+    private var bundledCosts: Map<String, Int> = emptyMap()
+
+    // Automatische Match-Erkennung
+    private var battleFirstSeen = 0L
+    private var battleLastSeen = 0L
+    private var autoRunning = false
+    private val endGapMs = 6000L
 
     private var lastText = "Noch keine Karte erkannt"
     private var debugText: String? = null
@@ -75,6 +82,7 @@ class TrackerService : Service(), OverlayController.Listener {
 
     private val ticker = object : Runnable {
         override fun run() {
+            checkBattleEnd(now())
             renderUi()
             main.postDelayed(this, 100)
         }
@@ -89,9 +97,20 @@ class TrackerService : Service(), OverlayController.Listener {
         prefs = Prefs(this)
         val store = TemplateStore(this)
         templateCosts = store.all().associate { it.name to it.cost }
-        state = MatchState { name -> templateCosts[name] ?: CardDatabase.costOf(name) }
+        bundled = BundledCards.load(this)
+        bundledCosts = bundled.associate { it.name to it.elixir }
+        state = MatchState(::costOf)
 
-        thumbnailCache = store.thumbnails((40 * resources.displayMetrics.density).toInt())
+        val thumbH = (40 * resources.displayMetrics.density).toInt()
+        val thumbs = HashMap<String, android.graphics.Bitmap>()
+        for (c in bundled) {
+            val b = BundledCards.bitmap(this, c.key) ?: continue
+            val w = (b.width * thumbH.toFloat() / b.height).toInt().coerceAtLeast(1)
+            thumbs[c.name] = android.graphics.Bitmap.createScaledBitmap(b, w, thumbH, true)
+            if (b != thumbs[c.name]) b.recycle()
+        }
+        thumbs.putAll(store.thumbnails(thumbH)) // eigene Vorlagen haben Vorrang
+        thumbnailCache = thumbs
         overlay = createOverlay()
         overlay.show()
 
@@ -169,7 +188,9 @@ class TrackerService : Service(), OverlayController.Listener {
         )
         return OverlayController(this, wm, this, look).also { o ->
             o.thumbnails = thumbnailCache
-            o.costOf = { name -> templateCosts[name] ?: CardDatabase.costOf(name) }
+            o.costOf = ::costOf
+            o.allCards = if (bundled.isNotEmpty()) bundled.map { it.name to it.elixir }
+            else CardDatabase.cards.map { it.name to it.cost }
         }
     }
 
@@ -190,9 +211,6 @@ class TrackerService : Service(), OverlayController.Listener {
             return
         }
         val templates = TemplateStore(this).all()
-        if (templates.isEmpty()) {
-            toast("Keine Karten-Vorlagen importiert – Erkennung findet nichts. Siehe Anleitung in der App.")
-        }
 
         val mpm = getSystemService(MediaProjectionManager::class.java)
         val mp = mpm.getMediaProjection(resultCode, data) ?: run {
@@ -207,16 +225,31 @@ class TrackerService : Service(), OverlayController.Listener {
 
         val (sw, sh) = realScreenSize()
         screenW = sw; screenH = sh
-        val capW = minOf(540, sw)
+        val capW = minOf(360, sw)
         val capH = (sh.toLong() * capW / sw).toInt()
         val scale = capW.toDouble() / sw
-
-        analyzer = ScreenAnalyzer(templates, scale)
-        applyPrefs()
 
         val thread = HandlerThread("analyzer").also { it.start() }
         worker = thread
         val handler = Handler(thread.looper)
+
+        // Kartenbilder im Hintergrund laden und vorbereiten
+        val cardList = bundled
+        handler.post {
+            val bitmaps = cardList.mapNotNull { c -> BundledCards.bitmap(this, c.key)?.let { c.name to it } }
+            val a = ScreenAnalyzer(bitmaps, templates, capW, scale, prefs.lockedScale)
+            bitmaps.forEach { it.second.recycle() }
+            main.post {
+                if (worker === thread) {
+                    analyzer = a
+                    applyPrefs()
+                    onOverlayBoundsChanged()
+                    toast("Scan aktiv – ${a.cardCount} Karten geladen. Match wird automatisch erkannt.")
+                } else {
+                    handler.post { a.release() }
+                }
+            }
+        }
 
         val reader = ImageReader.newInstance(capW, capH, PixelFormat.RGBA_8888, 2)
         imageReader = reader
@@ -239,7 +272,6 @@ class TrackerService : Service(), OverlayController.Listener {
             "ElixirTracker", capW, capH, resources.displayMetrics.densityDpi,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, reader.surface, null, null,
         )
-        toast("Scan aktiv (${analyzer?.templateCount ?: 0} Vorlagen)")
     }
 
     private fun realScreenSize(): Pair<Int, Int> =
@@ -268,10 +300,11 @@ class TrackerService : Service(), OverlayController.Listener {
         }
         val m = rgba?.takeIf { it.rows() == h && it.cols() == w } ?: Mat(h, w, CvType.CV_8UC4).also { rgba?.release(); rgba = it }
         m.put(0, 0, bytes)
-        Imgproc.cvtColor(m, gray, Imgproc.COLOR_RGBA2GRAY)
 
-        val res = a.analyze(gray, now)
+        val res = a.analyze(m, now)
         main.post {
+            onBattleState(res.battleVisible, now)
+            if (res.lockedScale != prefs.lockedScale) prefs.lockedScale = res.lockedScale
             for (name in res.detections) onDetected(name)
             debugText = if (prefs.showDebug && res.bestName != null) {
                 String.format(Locale.US, "bester Treffer: %s %.0f%%", res.bestName, res.bestScore * 100)
@@ -296,8 +329,36 @@ class TrackerService : Service(), OverlayController.Listener {
         }
     }
 
+    private fun costOf(name: String): Int? =
+        templateCosts[name] ?: bundledCosts[name] ?: CardDatabase.costOf(name)
+
+    /** Läuft im Main-Thread nach jedem analysierten Frame. */
+    private fun onBattleState(visible: Boolean, now: Long) {
+        if (!visible) return
+        if (now - battleLastSeen > endGapMs) battleFirstSeen = now // Match-Ansicht neu erschienen
+        battleLastSeen = now
+        if (!state.engine.running && !autoRunning && now - battleFirstSeen >= 1000) {
+            autoRunning = true
+            state.start(battleFirstSeen)
+            state.engine.update(now)
+            analyzer?.resetCooldowns()
+            lastText = "Match erkannt – Gegner startet mit 5 Elixier"
+            updateRestriction()
+        }
+    }
+
+    /** Läuft im Ticker: Match vorbei, wenn die Match-Ansicht eine Weile fehlt. */
+    private fun checkBattleEnd(now: Long) {
+        if (autoRunning && analyzer != null && now - battleLastSeen > endGapMs) {
+            autoRunning = false
+            state.engine.stop()
+            lastText = "Match beendet – warte auf nächstes Match"
+        }
+    }
+
     private fun applyPrefs() {
         analyzer?.apply {
+            if (prefs.lockedScale < 0 && lockedScale >= 0) resetCalibration()
             roiTop = prefs.roiTop / 100.0
             roiBottom = prefs.roiBottom / 100.0
             threshold = prefs.threshold / 100.0
@@ -340,7 +401,9 @@ class TrackerService : Service(), OverlayController.Listener {
                 next = state.cycle.next(),
                 last = lastText,
                 scanStatus = when {
-                    analyzer != null -> "Scan an · Deck ${state.cycle.deck.size}/8"
+                    analyzer != null -> "Scan an" +
+                        (if ((analyzer?.lockedScale ?: -1) < 0) " · kalibriert noch" else "") +
+                        " · Deck ${state.cycle.deck.size}/8"
                     else -> "Scan aus (manuell) · Deck ${state.cycle.deck.size}/8"
                 },
                 debug = debugText,
@@ -349,6 +412,7 @@ class TrackerService : Service(), OverlayController.Listener {
     }
 
     override fun onStartPressed() {
+        autoRunning = false
         state.start(now())
         analyzer?.resetCooldowns()
         lastText = "Match gestartet"

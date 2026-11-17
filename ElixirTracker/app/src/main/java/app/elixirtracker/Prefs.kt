@@ -11,7 +11,7 @@ class Prefs(ctx: Context) {
         get() = sp.getInt(KEY_ROI_TOP, 8)
         set(v) = sp.edit().putInt(KEY_ROI_TOP, v).apply()
     var roiBottom: Int
-        get() = sp.getInt(KEY_ROI_BOTTOM, 60)
+        get() = sp.getInt(KEY_ROI_BOTTOM, 55)
         set(v) = sp.edit().putInt(KEY_ROI_BOTTOM, v).apply()
     /** Erkennungs-Schwelle 50..99 (%). */
     var threshold: Int
@@ -47,7 +47,13 @@ class Prefs(ctx: Context) {
         sp.edit().putInt(KEY_X, x).putInt(KEY_Y, y).apply()
     }
 
+    /** Automatisch gefundene Symbol-Größe (Index in ScreenAnalyzer.SCALES), -1 = unbekannt. */
+    var lockedScale: Int
+        get() = sp.getInt(KEY_LOCKED_SCALE, -1)
+        set(v) = sp.edit().putInt(KEY_LOCKED_SCALE, v).apply()
+
     companion object {
+        const val KEY_LOCKED_SCALE = "locked_scale"
         const val KEY_SCALE = "overlay_scale"
         const val KEY_OPACITY = "overlay_opacity"
         const val KEY_ANCHOR = "overlay_anchor"
