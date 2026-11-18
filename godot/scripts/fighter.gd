@@ -43,8 +43,10 @@ const ABILITY_TYPES := ["beam", "zone", "turret", "orbit", "mine", "spin", "leap
 	"awaken", "domain", "spirit"]
 var awaken_until := 0.0   # Erwachen: Zeitpunkt, an dem die erwachte Form endet
 
+var level := 1
+
 func damage_mult() -> float:
-	return dmg_mult if _time < dmg_mult_until else 1.0
+	return (dmg_mult if _time < dmg_mult_until else 1.0) * (1.0 + 0.1 * (level - 1))
 
 func lifesteal_now() -> float:
 	return lifesteal if _time < lifesteal_until else 0.0
@@ -70,7 +72,8 @@ var _foot_rest_l := Vector3.ZERO
 var _foot_rest_r := Vector3.ZERO
 var _time := 0.0
 
-func setup(brawler: Dictionary, match_node) -> void:
+func setup(brawler: Dictionary, match_node, lvl := 1) -> void:
+	level = lvl
 	def = brawler
 	arena = match_node
 	apply_form(0, false)
@@ -133,7 +136,7 @@ func apply_form(i: int, animate: bool) -> void:
 	_foot_rest_r = rig.foot_r.position
 	_face(aim_dir)
 	var ratio: float = hp / max_hp if max_hp > 0.0 else 1.0
-	max_hp = def.hp * form().hp_mul
+	max_hp = def.hp * form().hp_mul * (1.0 + 0.1 * (level - 1))
 	hp = max(1.0, max_hp * ratio)
 	if animate:
 		_transform_t = 0.0

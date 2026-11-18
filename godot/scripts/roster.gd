@@ -102,6 +102,11 @@ const ROWS := [
 	["Astra", "Sternenkaiserin", "Legendär", "magier", "kosmos", "long", "happy", "wand", "2a1a5a", "ffd040", "ffffff", "crown,halo", 1.0],
 	["Echo", "Phantomklinge", "Legendär", "assassine", "klang", "hood", "visor", "katana", "1a1a2a", "ff40c0", "111111", "scarf", 1.0],
 	["Titania", "Feenkönigin", "Legendär", "heiler", "licht", "long", "happy", "wand", "ffd0f0", "ffd040", "fff0a0", "wings,crown", 0.95],
+	# ---------------- Legendär: Anime-Kämpfer (eigene Figuren)
+	["Kairo", "Kampfmönch der Sonne", "Legendär", "krieger", "licht", "topknot", "happy", "fists", "f2f2f2", "ffb020", "8a3a20", "medal", 1.0],
+	["Nyxara", "Weberin des Sternenraums", "Legendär", "kontrolle", "kosmos", "ponytail", "sleepy", "book", "1c1a40", "c070ff", "e070c0", "halo,flower", 1.0],
+	["Grimmzahn", "Dämon der Schattenklinge", "Legendär", "berserker", "schatten", "flame", "fangs", "great", "1a0a10", "e02040", "8a1020", "horns,bat_wings", 1.1],
+	["Zirr", "Sturmläufer", "Legendär", "assassine", "blitz", "mohawk", "angry", "daggers", "2a5a3a", "ffe040", "30c0a0", "scarf", 0.95],
 ]
 
 const SKIN_TONES := ["f5c7a3", "e8b48e", "d29a72", "a8714e", "7a4e33", "f7d9c4"]
@@ -511,6 +516,20 @@ static func ANIME_SUPERS() -> Dictionary:
 			"atk_name": "Bestienklaue", "atk_desc": "Wilde Klauenhiebe mit Eiswelle.",
 			"sup_name": "Urschrei", "sup_desc": "Sprung mit gewaltigem Einschlag.",
 			"sup": {"type": "leap", "range": 9.0, "radius": 3.5, "dmg": 2200.0, "stun": 1.0, "break": true}}],
+	"Kairo": ["Erwachen: Sonnenkern", "Erwacht für 12 s: Sonnenaura, Heiligenschein und Lichtflügel, stärkere Kombos und eine gewaltige Energiekanone als Super.",
+		{"type": "awaken", "dur": 12.0, "dmg": 1000.0, "radius": 3.2, "knock": 1.5, "form_name": "Erwacht – Sonnenkern", "acc": ["halo", "wings", "pauldrons"],
+			"atk_name": "Sonnenfaust-Sturm", "atk_desc": "Kombo mit durchschlagender Energiewelle.",
+			"sup_name": "Sonnenkanone", "sup_desc": "Ein riesiger Energiestrahl quer über die Arena.",
+			"sup": {"type": "beam", "dmg": 3200.0, "range": 15.0, "width": 1.5, "knock": 2.5, "break": true}}],
+	"Zirr": ["Erwachen: Blitzrausch", "Erwacht für 10 s: Blitzaura, viel schneller, Krallen mit Kettenblitz-Wellen.",
+		{"type": "awaken", "dur": 10.0, "dmg": 800.0, "radius": 3.0, "stun": 0.5, "form_name": "Erwacht – Blitzrausch", "hair": "flame", "acc": ["scarf", "spikes"],
+			"atk_name": "Donnerkette", "atk_desc": "Dolchstiche mit überspringender Blitzwelle.",
+			"sup_name": "Blitzgewitter", "sup_desc": "Springt 6-mal blitzschnell zwischen Gegnern und betäubt sie.",
+			"sup": {"type": "blink", "range": 9.0, "hits": 6, "dmg": 650.0, "stun": 0.5}}],
+	"Grimmzahn": ["Geistwächter: Höllenschlächter", "Ein kleiner Dämonengeist schlägt 8 s lang mit wilden Hieben zu und raubt Leben.",
+		{"type": "spirit", "dur": 8.0, "dmg": 190.0, "interval": 0.12, "reach": 2.8, "spirit_hair": "flame", "spirit_face": "fangs", "spirit_acc": ["horns", "spikes"], "buff_after": {"type": "buff", "dur": 8.0, "lifesteal": 0.3}}],
+	"Nyxara": ["Reich des Sternenmeers", "Eine Sternenkuppel: gefangene Gegner schweben fast still, Nyxara wird viel stärker.",
+		{"type": "domain", "range": 0.0, "radius": 5.5, "dur": 6.0, "dps": 450.0, "slow": 2.5, "stun": 0.15, "pull": 0.8, "dmg_mult": 1.6}],
 	# Reich: Kuppel, die Gegner einsperrt
 	"Chronos": ["Reich der stillen Zeit", "Eine Zeitkuppel: Gegner darin sind gefangen und fast eingefroren.",
 		{"type": "domain", "range": 0.0, "radius": 5.0, "dur": 6.0, "dps": 300.0, "slow": 3.0, "dmg_mult": 1.4}],
@@ -779,6 +798,14 @@ static func KITS() -> Dictionary:
 		"Schwarzes Loch", "Ein schwarzes Loch saugt alles ein und zermalmt es.", {"type": "zone", "range": 8.0, "radius": 4.0, "dur": 3.5, "dps": 900.0, "pull": 7.0}],
 	"Echo": ["Echoschnitt", "1 Munition = blitzt zum nächsten Gegner und schneidet.", {"type": "blink", "range": 5.0, "dmg": 900.0},
 		"Tausendfaches Echo", "Springt 6-mal zwischen Gegnern hin und her.", {"type": "blink", "range": 7.0, "hits": 6, "dmg": 600.0, "stun": 0.2}],
+	"Kairo": ["Sonnenfaust-Kombo", "1 Munition = 2 Faustschläge und ein Stoß, der eine Energiekugel abfeuert.", M([{"t": 0.0, "dir": "ltr", "dmg": 420.0, "range": 2.4, "arc": 120.0}, {"t": 0.1, "dir": "rtl", "dmg": 420.0, "range": 2.4, "arc": 120.0}, {"t": 0.22, "dir": "thrust", "dmg": 500.0, "range": 2.6, "arc": 70.0, "knock": 1.0, "wave": {"dmg": 450.0, "range": 7.0, "width": 0.5, "speed": 18.0}}]),
+		"", "", {}],
+	"Nyxara": ["Gravitationskern", "1 Munition = ein Sternenkern, der Gegner verfolgt und heranzieht.", {"type": "shot", "dmg": 600.0, "range": 8.5, "speed": 11.0, "width": 0.4, "visual": "orb", "homing": 2.5, "pull": 2.0},
+		"", "", {}],
+	"Grimmzahn": ["Doppelspalter", "1 Munition = 2 unsichtbar schnelle Schnittwellen im Fächer.", {"type": "fan", "count": 2, "spread": 24.0, "dmg": 560.0, "range": 6.5, "speed": 22.0, "width": 0.55},
+		"", "", {}],
+	"Zirr": ["Blitzdolche", "1 Munition = 3 elektrische Dolchstiche, die ganz kurz lähmen.", M([{"t": 0.0, "dir": "thrust", "dmg": 380.0, "range": 2.3, "arc": 80.0, "stun": 0.12}, {"t": 0.07, "dir": "ltr", "dmg": 380.0, "range": 2.3, "arc": 110.0, "stun": 0.12}, {"t": 0.14, "dir": "rtl", "dmg": 450.0, "range": 2.3, "arc": 110.0, "stun": 0.12}]),
+		"", "", {}],
 	"Titania": ["Feenlicht", "1 Munition = ein Lichtball, der verfolgt, abprallt und heilt.", {"type": "shot", "dmg": 500.0, "range": 8.5, "speed": 12.0, "width": 0.35, "homing": 3.0, "bounce": 1, "drain": 0.3, "visual": "orb"},
 		"Feenring", "6 Feen umkreisen sie, dazu ein Heilkreis.", {"type": "orbit", "count": 6, "dmg": 350.0, "dur": 6.0, "radius": 2.0, "buff_after": {"type": "zone", "range": 0.0, "radius": 3.5, "dur": 5.0, "heal": 0.12}}],
 	}

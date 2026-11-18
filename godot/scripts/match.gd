@@ -343,7 +343,9 @@ func _spawn_fighter(b: Dictionary, team: int, bot: bool, name: String) -> Fighte
 	f.is_bot = bot
 	f.display_name = name
 	add_child(f)
-	f.setup(b, self)
+	# Level: Spieler = eigenes Level, Bots ungefähr auf Spieler-Niveau (fair)
+	var lvl: int = Game.level_of(b.id) if not bot else clamp(Game.level_of(Game.data.selected) + randi_range(-1, 1), 1, 11)
+	f.setup(b, self, lvl)
 	f.proxy = {"fighter": f, "pos": f.position, "radius": 0.5}
 	fighters.append(f)
 	if bot:
@@ -1400,14 +1402,14 @@ func _summon_spirit(f: Fighter, s: Dictionary) -> void:
 	var look: Dictionary = f.form().look.duplicate(true)
 	look.merge({"robe": c.darkened(0.25), "trim": Color(1, 1, 1), "skin": c.lightened(0.35), "hair": c.lightened(0.15),
 		"face": s.get("spirit_face", "visor"), "weapon": "fists", "eye": Color(1, 1, 1), "blade": c.lightened(0.3),
-		"cape": false, "size": look.get("size", 1.0) * 1.15, "body": "buff"}, true)
+		"cape": false, "size": look.get("size", 1.0) * 0.72, "body": "normal"}, true)
 	look["acc"] = s.get("spirit_acc", ["pauldrons"])
 	look["armor_color"] = c.lightened(0.2)
 	if s.has("spirit_hair"):
 		look["hair_style"] = s.spirit_hair
 	var rig := ModelBuilder.build(look)
 	add_child(rig.root)
-	rig.root.position = f.position + Vector3(0.9, 0.4, 0.6)
+	rig.root.position = f.position + Vector3(0.9, 0.6, 0.6)
 	spirits.append({"owner": f, "rig": rig, "t": 0.0, "dur": s.get("dur", 7.0), "cd": 0.0, "interval": s.get("interval", 0.14),
 		"dmg": s.dmg, "reach": s.get("reach", 2.6), "fx": fx_of(s), "color": c, "punch": 0})
 	_burst(rig.root.position + Vector3(0, 1.0, 0), c, 40, 6.0, 0.25)
@@ -1433,12 +1435,12 @@ func _update_spirits(delta: float) -> void:
 			var dist: float = (d.pos - f.position).length()
 			if dist < bd:
 				bd = dist; target = d
-		var home: Vector3 = f.position + f.aim_dir.rotated(Vector3.UP, 2.2) * 0.9 + Vector3(0, 0.4 + sin(sp.t * 3.0) * 0.12, 0)
+		var home: Vector3 = f.position + f.aim_dir.rotated(Vector3.UP, 2.2) * 0.9 + Vector3(0, 0.6 + sin(sp.t * 3.0) * 0.12, 0)
 		var want: Vector3 = home
 		if target != null:
 			var to: Vector3 = target.pos - f.position
 			to.y = 0
-			want = target.pos - to.normalized() * 1.1 + Vector3(0, 0.4, 0)
+			want = target.pos - to.normalized() * 1.0 + Vector3(0, 0.6, 0)
 			root.rotation.y = lerp_angle(root.rotation.y, atan2(-to.x, -to.z), 1.0 - exp(-delta * 15.0))
 		else:
 			root.rotation.y = lerp_angle(root.rotation.y, atan2(-f.aim_dir.x, -f.aim_dir.z), 1.0 - exp(-delta * 10.0))

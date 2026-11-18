@@ -537,6 +537,10 @@ func _brawler_card(b: Dictionary) -> Control:
 		tl.position = Vector2(134, 10)
 		tl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		card.add_child(tl)
+		var lvl_l := Game.make_label("Lv %d" % Game.level_of(b.id), 16, Color(0.9, 0.7, 1.0), 4)
+		lvl_l.position = Vector2(10, 52)
+		lvl_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card.add_child(lvl_l)
 		if Game.data.selected == b.id:
 			var sel := Game.make_label("✔", 26, Color(0.5, 1, 0.5), 5)
 			sel.position = Vector2(12, 150)
@@ -594,11 +598,38 @@ func show_detail(id: String, preview_skin := "-") -> void:
 	var nxt: int = Game.next_rank_trophies(btr)
 	var rank_l := Game.make_label("RANG %d  •  %d Trophäen%s" % [rk, btr, ("  (Rang %d bei %d)" % [rk + 1, nxt]) if nxt > 0 else "  (Höchster Rang!)"], 22, Game.rank_color(rk), 6)
 	vb.add_child(rank_l)
+	# Level & Powerpunkte
+	if unlocked:
+		var lv: int = Game.level_of(b.id)
+		var cost: Array = Game.upgrade_cost(b.id)
+		var up_row := HBoxContainer.new()
+		up_row.add_theme_constant_override("separation", 14)
+		vb.add_child(up_row)
+		var lv_text := "LEVEL %d  (+%d %% Leben & Schaden)" % [lv, (lv - 1) * 10]
+		if not cost.is_empty():
+			lv_text += "\nPowerpunkte: %d / %d" % [Game.pp_of(b.id), cost[0]]
+		var lv_l := Game.make_label(lv_text, 20, Color(0.85, 0.6, 1.0), 5)
+		up_row.add_child(lv_l)
+		if cost.is_empty():
+			up_row.add_child(Game.make_label("MAX", 24, Color(1, 0.85, 0.3), 5))
+		else:
+			var ready: bool = Game.is_infinite() or (Game.pp_of(b.id) >= cost[0] and Game.data.coins >= cost[1])
+			var ub := Game.make_button("Aufwerten\n%s Münzen" % ("∞" if Game.is_infinite() else str(cost[1])), Color(0.3, 0.8, 0.35) if ready else Color(0.4, 0.4, 0.5), Vector2(200, 70), 18)
+			var bid: String = b.id
+			ub.pressed.connect(func():
+				var msg := Game.upgrade(bid)
+				if msg == "":
+					Game.play_sfx("transform", 0.8, 1.2)
+					show_detail(bid, preview_skin)
+					_popup("Aufgewertet!", "%s ist jetzt Level %d." % [b.name, Game.level_of(bid)])
+				else:
+					_popup("Aufwerten", msg))
+			up_row.add_child(ub)
 	var desc := Game.make_label(b.desc, 20, Color(0.85, 0.85, 0.95), 4)
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc.custom_minimum_size = Vector2(640, 0)
 	vb.add_child(desc)
-	var stats := Game.make_label("Leben: %d    Tempo: %.1f    Munition: %d    Nachladen: %.2f s" % [int(b.hp * f.hp_mul), b.speed * f.speed_mul, b.ammo, b.reload * f.reload_mul], 20, Color.WHITE, 5)
+	var stats := Game.make_label("Leben: %d    Tempo: %.1f    Munition: %d    Nachladen: %.2f s" % [int(b.hp * f.hp_mul * Game.level_mult(Game.level_of(b.id))), b.speed * f.speed_mul, b.ammo, b.reload * f.reload_mul], 20, Color.WHITE, 5)
 	vb.add_child(stats)
 	vb.add_child(Game.make_label(f.name, 28, Color(1, 0.85, 0.3), 8))
 	var a := Game.make_label("ANGRIFF – %s\n%s" % [f.combo_name, f.combo_desc], 20, Color(1, 0.7, 0.45), 5)
@@ -1121,7 +1152,7 @@ func end_match() -> void:
 			_popup("Match verlassen", "Ohne Belohnung verlassen.")
 		return
 	var r := Game.award_match(res)
-	_popup("Belohnung", "Trophäen: %+d   (gesamt %d)\nMünzen: +%d" % [r.trophies, int(Game.data.trophies), r.coins])
+	_popup("Belohnung", "Trophäen: %+d   (gesamt %d)\nMünzen: +%d\nPowerpunkte: +%d" % [r.trophies, int(Game.data.trophies), r.coins, r.get("pp", 0)])
 
 # ==================================================================== Automatischer Test (headless)
 func _run_tests() -> void:

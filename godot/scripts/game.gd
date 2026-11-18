@@ -11,6 +11,7 @@ var data := {
 	"music": 0.6, "sfx": 0.8, "boxes_opened": 0,
 	"owned_skins": [], "equipped": {}, "last_free_box": 0.0, "infinite": false,
 	"road_claimed": [], "lang": "de", "mode": "training",
+	"levels": {}, "power_points": {},
 }
 var brawlers: Array = []
 var _sfx_cache := {}
@@ -232,6 +233,48 @@ func spend(currency: String, amount: int) -> void:
 	if not is_infinite():
 		data[currency] -= amount
 
+# ------------------------------------------------------------------ Level & Powerpunkte (1–11)
+const MAX_LEVEL := 11
+## Kosten für Level n -> n+1: [Powerpunkte, Münzen]
+const UPGRADE_COST := [[20, 20], [30, 35], [50, 75], [80, 140], [130, 290], [210, 480], [340, 800], [550, 1250], [890, 1875], [1440, 2800]]
+
+func level_of(id: String) -> int:
+	return int(data.get("levels", {}).get(id, 1))
+
+func pp_of(id: String) -> int:
+	return int(data.get("power_points", {}).get(id, 0))
+
+## +10 % Leben und Schaden pro Level über 1.
+static func level_mult(level: int) -> float:
+	return 1.0 + 0.1 * (level - 1)
+
+func upgrade_cost(id: String) -> Array:
+	var lv := level_of(id)
+	return UPGRADE_COST[lv - 1] if lv < MAX_LEVEL else []
+
+func add_pp(id: String, amount: int) -> void:
+	var pp: Dictionary = data.get("power_points", {})
+	pp[id] = int(pp.get(id, 0)) + amount
+	data["power_points"] = pp
+
+## Brawler aufwerten. Rückgabe: "" bei Erfolg, sonst Fehlermeldung.
+func upgrade(id: String) -> String:
+	var cost := upgrade_cost(id)
+	if cost.is_empty():
+		return "Maximales Level erreicht!"
+	if not is_infinite():
+		if pp_of(id) < cost[0]:
+			return "Nicht genug Powerpunkte! (%d / %d)" % [pp_of(id), cost[0]]
+		if data.coins < cost[1]:
+			return "Nicht genug Münzen! (%d benötigt)" % cost[1]
+		add_pp(id, -cost[0])
+		data.coins -= cost[1]
+	var lv: Dictionary = data.get("levels", {})
+	lv[id] = level_of(id) + 1
+	data["levels"] = lv
+	save_game()
+	return ""
+
 func currency_text() -> String:
 	if is_infinite():
 		return t("Münzen") + ": ∞    " + t("Edelsteine") + ": ∞"
@@ -328,6 +371,7 @@ func open_box(type: String, free := false, gift := false) -> Array:
 	var rewards: Array = []
 	var coins := 0
 	var gems := 0
+	var pp_gain := {}
 	for i in bx.rolls:
 		# Hyperlegendär: 0,00000001 % = 1e-10 pro Belohnung (zwei Würfe à 1e-5, da randf zu grob ist)
 		if randf() < 0.00001 and randf() < 0.00001:
@@ -352,8 +396,20 @@ func open_box(type: String, free := false, gift := false) -> Array:
 				continue
 		if r > 0.78:
 			gems += randi_range(2, 6)
+		elif r > 0.45 and not data.unlocked.is_empty():
+			# Powerpunkte für einen freigeschalteten Brawler, der noch nicht Level 11 ist
+			var cands: Array = data.unlocked.filter(func(uid): return level_of(uid) < MAX_LEVEL)
+			if cands.is_empty():
+				coins += randi_range(25, 70)
+			else:
+				var pid: String = cands.pick_random()
+				pp_gain[pid] = int(pp_gain.get(pid, 0)) + randi_range(12, 30) * (1 + ["brawl", "big", "mega"].find(type))
 		else:
 			coins += randi_range(25, 70)
+	for pid in pp_gain:
+		add_pp(pid, pp_gain[pid])
+		var pb := get_brawler(pid)
+		rewards.push_front({"kind": "pp", "amount": pp_gain[pid], "id": pid, "text": "%d Powerpunkte" % pp_gain[pid], "sub": "für " + String(pb.get("name", pid)), "color": Color(0.85, 0.45, 1.0)})
 	if gems > 0:
 		data.gems += gems
 		rewards.push_front({"kind": "gems", "amount": gems, "text": "%d Edelsteine" % gems, "sub": "", "color": Color(0.35, 1.0, 0.55)})
@@ -399,6 +455,11 @@ func award_match(res: Dictionary) -> Dictionary:
 		tr = table[clamp(res.rank - 1, 0, table.size() - 1)]
 		coins = max(5, 35 - (res.rank - 1) * 5)
 	coins += res.kills * 3
+	var pp_win: int = 12 if (res.mode == "team" and res.outcome == "victory") or (res.mode != "team" and res.rank <= 2) else 6
+	if level_of(data.selected) < MAX_LEVEL:
+		add_pp(data.selected, pp_win)
+	else:
+		pp_win = 0
 	# Trophäen zählen für den gespielten Brawler (Rang) und insgesamt (Trophäenpfad)
 	var sel: String = data.selected
 	var bt: Dictionary = data.get("btrophies", {})
@@ -410,7 +471,7 @@ func award_match(res: Dictionary) -> Dictionary:
 	data.trophies = max(0, int(data.get("trophies", 0)) + tr)
 	data.coins += coins
 	save_game()
-	return {"trophies": tr, "coins": coins}
+	return {"trophies": tr, "coins": coins, "pp": pp_win}
 
 # ------------------------------------------------------------------ Brawler-Ränge (1–35)
 ## Trophäen, die für Rang 1..35 nötig sind.
