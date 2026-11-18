@@ -90,6 +90,7 @@ class InstGroup {
     this.mesh.setMatrixAt(i, tmpM);
     this.idxMats[i] = tmpM.clone();
     if (color !== undefined) this.mesh.setColorAt(i, new THREE.Color(color));
+    else if (this.jitter) { const k = 1 - this.jitter / 2 + Math.random() * this.jitter; this.mesh.setColorAt(i, new THREE.Color(k, k * (0.98 + Math.random() * 0.04), k)); }
     if (this.ol) this.ol.count = this.mesh.count;
     if (!this.keyToIdx.has(key)) this.keyToIdx.set(key, []);
     this.keyToIdx.get(key).push(i);
@@ -156,6 +157,7 @@ export function buildArena(scene, grid, theme, seed = 1) {
   parts.rope = new InstGroup(group, new THREE.CylinderGeometry(0.06, 0.07, 0.7, 8), toon(0x8a6a4a), nRope * 2, 0.012);
   parts.ropeBar = new InstGroup(group, new THREE.CylinderGeometry(0.03, 0.03, 1, 6), toon(0xd8c8a0), nRope * 2, 0);
 
+  parts.wall.jitter = 0.16; if (parts.wallTop) parts.wallTop.jitter = 0.12; parts.bush.jitter = 0.22; parts.bush2.jitter = 0.22; parts.crate.jitter = 0.18;
   const waterMat = new THREE.ShaderMaterial({
     uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(theme.water) } },
     vertexShader: `varying vec2 vUv; varying vec3 vW; void main(){ vUv = uv; vec4 w = modelMatrix * instanceMatrix * vec4(position,1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
@@ -203,6 +205,7 @@ export function buildArena(scene, grid, theme, seed = 1) {
   // rotate rope bars to lie horizontally
   parts.ropeBar.mesh.geometry.rotateZ(Math.PI / 2);
   for (const k in parts) parts[k].finish();
+  for (const k of ['wall', 'wallTop', 'bush', 'bush2', 'crate']) if (parts[k]?.mesh.instanceColor) parts[k].mesh.instanceColor.needsUpdate = true;
   parts.bush.mesh.castShadow = false; parts.bush2.mesh.castShadow = false; parts.crateBand.mesh.castShadow = false; parts.ropeBar.mesh.castShadow = false;
 
   // ---------- decorative props around the arena ----------
