@@ -23,20 +23,12 @@ namespace BrawlArena.UI
         {
             UIFactory.Backdrop(Root, new Color(1f, 0.6f, 0.25f), new Color(0.4f, 0.12f, 0.3f));
             MainMenuScreen.BuildHeader(Root, "Shop");
-            var hint = UIFactory.Label(Root, "Alle Währungen werden durch Spielen verdient – keine Echtgeld-Käufe.", 28, new Color(1, 1, 1, 0.8f), TextAnchor.MiddleLeft);
+            var hint = UIFactory.Label(Root, "Neue Brawler gibt es nur mit Glück aus Boxen! Keine Echtgeld-Käufe.", 28, new Color(1, 1, 1, 0.8f), TextAnchor.MiddleLeft);
             hint.rectTransform.Place(0, 1, 170, -125, 1300, 50, 0, 1);
 
             var row = UIFactory.ScrollList(Root, true, 28);
             ((RectTransform)row.parent.parent).Anchor(0, 0.06f, 1, 0.84f, 30, 0, 30, 0);
             foreach (var offer in Economy.GetShopOffers()) BuildOffer(row, offer);
-            // Brawler direkt kaufen
-            var p = SaveSystem.Profile;
-            foreach (var b in ContentDatabase.Brawlers)
-            {
-                if (p.IsUnlocked(b) || b.CoinPrice <= 0) continue;
-                var def = b;
-                BuildBrawlerOffer(row, def);
-            }
         }
 
         private void BuildOffer(Transform row, ShopOffer o)
@@ -60,30 +52,6 @@ namespace BrawlArena.UI
                 AudioManager.Sfx(SfxPreset.Coin);
                 UIManager.Instance.ShowRewards(o.title, got, Refresh);
             }, 36, pi);
-            ((RectTransform)buy.transform).Anchor(0, 0, 1, 0.22f, 24, 20, 24, 0);
-        }
-
-        private void BuildBrawlerOffer(Transform row, BrawlerDefinition def)
-        {
-            var card = UIFactory.FancyPanel(row, Color.Lerp(RarityUtil.GetColor(def.rarity), Color.black, 0.25f), def.id);
-            UIFactory.Layout(card.gameObject, 380, 0);
-            var t = UIFactory.Label(card.transform, def.displayName.ToUpper(), 40, Color.white);
-            t.rectTransform.Anchor(0, 0.84f, 1, 1, 10, 0, 10, 10);
-            var raw = UIFactory.Rect(card.transform, "Portrait").Place(0.5f, 0.56f, 0, 0, 260, 260).gameObject.AddComponent<RawImage>();
-            raw.texture = PortraitCache.Get(def);
-            raw.raycastTarget = false;
-            var s = UIFactory.Label(card.transform, RarityUtil.GetName(def.rarity), 30, Color.white);
-            s.rectTransform.Anchor(0, 0.24f, 1, 0.36f);
-            bool afford = SaveSystem.Profile.coins >= def.CoinPrice;
-            var buy = UIFactory.Button(card.transform, def.CoinPrice.ToString(), afford ? Palette.Green : Palette.Gray, () =>
-            {
-                if (Economy.UnlockWithCoins(def))
-                {
-                    AudioManager.Sfx(SfxPreset.Confirm);
-                    UIManager.Instance.ShowRewards("Neuer Brawler!", new List<Reward> { new Reward { type = RewardType.Brawler, label = def.displayName + " freigeschaltet!" } }, Refresh);
-                }
-                else UIManager.Instance.Toast("Nicht genug Münzen!", Palette.Red);
-            }, 36, Icon.Coin);
             ((RectTransform)buy.transform).Anchor(0, 0, 1, 0.22f, 24, 20, 24, 0);
         }
 
@@ -242,6 +210,8 @@ namespace BrawlArena.UI
             AddToggle(list, "Vibration", s.vibration, v => s.vibration = v);
             AddSlider(list, "Joystick-Größe", Mathf.InverseLerp(0.7f, 1.4f, s.joystickSize), v => s.joystickSize = Mathf.Lerp(0.7f, 1.4f, v));
 
+            var code = UIFactory.Button(list, "Code eingeben", Palette.Purple, ShowCodeMenu, 36, Icon.Gift);
+            UIFactory.Layout(code.gameObject, 0, 120);
             var help = UIFactory.Button(list, "Steuerung & Hilfe", Palette.Blue, ShowHelp, 36, Icon.Info);
             UIFactory.Layout(help.gameObject, 0, 120);
             var reset = UIFactory.Button(list, "Fortschritt zurücksetzen", Palette.Red, () =>
@@ -292,6 +262,26 @@ namespace BrawlArena.UI
                 float w = 0.45f / options.Length;
                 ((RectTransform)b.transform).Anchor(0.55f + w * i, 0.12f, 0.55f + w * (i + 1), 0.88f, 6, 0, 6, 0);
             }
+        }
+
+        /// <summary>Code-Menü: gültige Codes schalten Inhalte frei.</summary>
+        public static void ShowCodeMenu()
+        {
+            GameObject popup;
+            var c = UIManager.Instance.OpenPopup("Code eingeben", 1000, 560, out popup);
+            var hint = UIFactory.Label(c, "Gib einen Code ein:", 36, Color.white);
+            hint.rectTransform.Anchor(0, 0.7f, 1, 1);
+            var field = UIFactory.Input(c, "", 20, null);
+            ((RectTransform)field.transform).Place(0.5f, 0.55f, 0, 0, 600, 100);
+            var ok = UIFactory.Button(c, "Einlösen", Palette.Green, () =>
+            {
+                var got = Economy.RedeemCode(field.text);
+                if (got == null) { UIManager.Instance.Toast("Ungültiger Code.", Palette.Red); return; }
+                UIManager.Instance.ClosePopup(popup);
+                GameFlow.Instance.ValidateSelection();
+                UIManager.Instance.ShowRewards("Code eingelöst!", got);
+            }, 40);
+            ((RectTransform)ok.transform).Place(0.5f, 0, 0, 10, 420, 120, 0.5f, 0);
         }
 
         public static void ShowHelp()

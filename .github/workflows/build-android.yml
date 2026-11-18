@@ -7,7 +7,11 @@
 name: Android-APK bauen
 
 on:
-  workflow_dispatch:   # manuell starten (erst nach dem Anlegen der Secrets sinnvoll)
+  workflow_dispatch:
+  push:
+    paths:
+      - 'BrawlArena/**'
+      - '.github/workflows/build-android.yml'
 
 jobs:
   build:
@@ -15,16 +19,30 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
+      # Ohne Unity-Lizenz wird der Build übersprungen statt fehlzuschlagen.
+      - name: Unity-Lizenz prüfen
+        id: license
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          if [ -n "$UNITY_LICENSE" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Secret UNITY_LICENSE fehlt – APK-Build übersprungen. Siehe README, Abschnitt 'APK bauen'."
+          fi
+
       - name: Speicherplatz freigeben
+        if: steps.license.outputs.ok == 'true'
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
           android: false
           tool-cache: false
 
       - name: Repository auschecken
+        if: steps.license.outputs.ok == 'true'
         uses: actions/checkout@v4
 
       - name: Unity-Library-Cache
+        if: steps.license.outputs.ok == 'true'
         uses: actions/cache@v4
         with:
           path: BrawlArena/Library
@@ -33,6 +51,7 @@ jobs:
             Library-Android-
 
       - name: APK bauen
+        if: steps.license.outputs.ok == 'true'
         uses: game-ci/unity-builder@v4
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
@@ -46,6 +65,7 @@ jobs:
           androidExportType: androidPackage
 
       - name: APK hochladen
+        if: steps.license.outputs.ok == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: BrawlArena-APK

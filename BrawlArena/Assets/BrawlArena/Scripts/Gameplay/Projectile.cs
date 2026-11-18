@@ -278,7 +278,7 @@ namespace BrawlArena.Gameplay
                 }
                 if (p.Boomerang && !p.Returning) { p.Returning = true; p.Hit.Clear(); p.transform.position = hitPoint; return false; }
                 FX.Hit(hitPoint, p.Spec.color);
-                if (p.Spec.kind == AttackKind.Lob || (p.Spec.areaRadius > 0.3f && p.Spec.visual == ProjectileVisual.Bomb)) Explode(p, hitPoint);
+                if (p.Spec.kind == AttackKind.Lob || p.Spec.explodeOnImpact || (p.Spec.areaRadius > 0.3f && p.Spec.visual == ProjectileVisual.Bomb)) Explode(p, hitPoint);
                 return !p.Returning;
             }
 
@@ -293,7 +293,7 @@ namespace BrawlArena.Gameplay
                 AttackSystem.DealDamage(p.Owner, d, p.Spec, p.Damage, from - dir, p.IsSuper);
                 if (!p.Spec.pierce && !p.Boomerang)
                 {
-                    if (p.Spec.areaRadius > 0.3f && p.Spec.visual == ProjectileVisual.Bomb) Explode(p, d.Position);
+                    if (p.Spec.explodeOnImpact || (p.Spec.areaRadius > 0.3f && p.Spec.visual == ProjectileVisual.Bomb)) Explode(p, d.Position);
                     return true;
                 }
             }
@@ -301,12 +301,12 @@ namespace BrawlArena.Gameplay
             p.transform.position = next;
             p.transform.rotation = Quaternion.LookRotation(dir);
             if (p.CurrentVisual == ProjectileVisual.Star) p.transform.Rotate(0, Time.time * 720f % 360f, 0, Space.Self);
-            if (p.CurrentVisual == ProjectileVisual.Flame && FX.Quality > 0) FX.Trail(next, p.Spec.color, p.Radius * 3f);
+            if ((p.CurrentVisual == ProjectileVisual.Flame || p.CurrentVisual == ProjectileVisual.Slash) && FX.Quality > 0) FX.Trail(next, p.Spec.color, p.Radius * 3f);
             p.Travelled += step;
             if (!p.Returning && p.Travelled >= p.Range)
             {
                 if (p.Boomerang) { p.Returning = true; p.Hit.Clear(); return false; }
-                if (p.Spec.visual == ProjectileVisual.Bomb && p.Spec.areaRadius > 0.3f) Explode(p, next);
+                if (p.Spec.explodeOnImpact || (p.Spec.visual == ProjectileVisual.Bomb && p.Spec.areaRadius > 0.3f)) Explode(p, next);
                 return true;
             }
             if (p.Returning && p.Travelled > p.Range * 3f) return true;

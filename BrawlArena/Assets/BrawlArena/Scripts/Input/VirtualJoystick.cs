@@ -30,12 +30,10 @@ namespace BrawlArena.Controls
         private int pointerId = int.MinValue;
         private float downTime;
         private Vector2 maxValue;
-        private Canvas canvas;
 
         private void Start()
         {
             restPos = Base.anchoredPosition;
-            canvas = GetComponentInParent<Canvas>();
         }
 
         public void OnPointerDown(PointerEventData e)

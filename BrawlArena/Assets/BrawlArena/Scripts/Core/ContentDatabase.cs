@@ -1,12 +1,10 @@
 // ---------------------------------------------------------------------------------------------
 // ContentDatabase – sammelt ALLE Inhalte des Spiels an einem Ort:
 //   1. Eigene Assets aus Resources/BrawlArena/{Brawlers,Maps,Modes,Skins} (im Editor erstellt)
-//   2. Im Spiel erstellte Brawler (Charakter-Editor, als JSON gespeichert)
-//   3. Mitgelieferte Standardinhalte (DefaultContent) – werden durch Assets mit gleicher ID ersetzt.
+//   2. Mitgelieferte Standardinhalte (DefaultContent) – werden durch Assets mit gleicher ID ersetzt.
 // Dadurch kann man neue Inhalte hinzufügen, ohne Code zu ändern.
 // ---------------------------------------------------------------------------------------------
 using System.Collections.Generic;
-using System.IO;
 using UnityEngine;
 using BrawlArena.Data;
 
@@ -19,14 +17,13 @@ namespace BrawlArena.Core
         public static readonly List<MapDefinition> Maps = new List<MapDefinition>();
         public static readonly List<GameModeDefinition> Modes = new List<GameModeDefinition>();
         public static readonly List<SkinDefinition> Skins = new List<SkinDefinition>();
-        public static readonly HashSet<string> CustomBrawlerIds = new HashSet<string>();
         public static bool Initialized { get; private set; }
 
         public const string ResourceRoot = "BrawlArena/";
 
         public static void Init()
         {
-            Brawlers.Clear(); Npcs.Clear(); Maps.Clear(); Modes.Clear(); Skins.Clear(); CustomBrawlerIds.Clear();
+            Brawlers.Clear(); Npcs.Clear(); Maps.Clear(); Modes.Clear(); Skins.Clear();
 
             AddRange(Brawlers, Resources.LoadAll<BrawlerDefinition>(ResourceRoot + "Brawlers"), b => b.id);
             AddRange(Maps, Resources.LoadAll<MapDefinition>(ResourceRoot + "Maps"), m => m.id);
@@ -38,13 +35,6 @@ namespace BrawlArena.Core
             AddRange(Maps, DefaultContent.CreateMaps(), m => m.id);
             AddRange(Modes, DefaultContent.CreateModes(), m => m.id);
             AddRange(Skins, DefaultContent.CreateSkins(), s => s.id);
-
-            foreach (var custom in LoadCustomBrawlers())
-            {
-                if (Brawlers.Exists(b => b.id == custom.id)) continue;
-                Brawlers.Add(custom);
-                CustomBrawlerIds.Add(custom.id);
-            }
 
             Brawlers.Sort((a, b) => a.sortOrder != b.sortOrder ? a.sortOrder.CompareTo(b.sortOrder) : a.rarity.CompareTo(b.rarity));
             Modes.Sort((a, b) => a.sortOrder.CompareTo(b.sortOrder));
@@ -79,67 +69,6 @@ namespace BrawlArena.Core
             var copy = def.CreateRuntimeCopy();
             skin.ApplyTo(copy);
             return copy;
-        }
-
-        // ------------------------------------------------------------------ Eigene Brawler (In-Game-Editor)
-        private static string CustomDir { get { return Path.Combine(Application.persistentDataPath, "custom_brawlers"); } }
-
-        public static List<BrawlerDefinition> LoadCustomBrawlers()
-        {
-            var result = new List<BrawlerDefinition>();
-            try
-            {
-                if (!Directory.Exists(CustomDir)) return result;
-                foreach (var file in Directory.GetFiles(CustomDir, "*.json"))
-                {
-                    var def = ScriptableObject.CreateInstance<BrawlerDefinition>();
-                    JsonUtility.FromJsonOverwrite(File.ReadAllText(file), def);
-                    StripObjectReferences(def);
-                    def.name = def.id;
-                    def.unlockedByDefault = true;
-                    result.Add(def);
-                }
-            }
-            catch (System.Exception e) { Debug.LogWarning("[BrawlArena] Eigene Brawler konnten nicht geladen werden: " + e.Message); }
-            return result;
-        }
-
-        public static void SaveCustomBrawler(BrawlerDefinition def)
-        {
-            Directory.CreateDirectory(CustomDir);
-            StripObjectReferences(def);
-            File.WriteAllText(Path.Combine(CustomDir, def.id + ".json"), JsonUtility.ToJson(def, true));
-            var existing = GetBrawler(def.id);
-            if (existing != null && existing != def) Brawlers.Remove(existing);
-            if (!Brawlers.Contains(def)) Brawlers.Add(def);
-            CustomBrawlerIds.Add(def.id);
-        }
-
-        public static void DeleteCustomBrawler(string id)
-        {
-            string path = Path.Combine(CustomDir, id + ".json");
-            if (File.Exists(path)) File.Delete(path);
-            Brawlers.RemoveAll(b => b.id == id && CustomBrawlerIds.Contains(id));
-            CustomBrawlerIds.Remove(id);
-        }
-
-        /// <summary>Asset-Verweise (Modelle, Clips, Sounds) können nicht als JSON gespeichert werden.</summary>
-        private static void StripObjectReferences(BrawlerDefinition d)
-        {
-            d.portrait = null;
-            d.appearance.customModel = null;
-            d.animations.idleClip = d.animations.walkClip = d.animations.attackClip = d.animations.superClip = null;
-            d.animations.hitClip = d.animations.deathClip = d.animations.victoryClip = null;
-            d.sounds.attack = d.sounds.super = d.sounds.hurt = d.sounds.death = d.sounds.spawn = d.sounds.footstep = null;
-            d.mainAttack.customPattern = null;
-            d.superAbility.customPattern = null;
-            if (d.forms != null)
-                foreach (var f in d.forms)
-                {
-                    f.appearance.customModel = null;
-                    f.mainAttack.customPattern = null;
-                    f.superAbility.customPattern = null;
-                }
         }
     }
 }

@@ -37,7 +37,6 @@ namespace BrawlArena.UI
             AddNav(Icon.Shop, "Shop", Palette.Orange, () => UIManager.Instance.Push<ShopScreen>(), ref y, Economy.FreeBoxReady());
             AddNav(Icon.Users, "Brawler", Palette.Blue, () => UIManager.Instance.Push<BrawlersScreen>(), ref y, false);
             AddNav(Icon.Flag, "Trophäenpfad", Palette.Red, () => UIManager.Instance.Push<TrophyRoadScreen>(), ref y, Economy.UnclaimedRoadCount() > 0);
-            AddNav(Icon.Pencil, "Editor", Palette.Purple, () => UIManager.Instance.Push<CreatorScreen>(), ref y, false);
 
             // ------------------------------------------------ Tägliche Belohnung & Token-Box
             if (Economy.DailyRewardReady())

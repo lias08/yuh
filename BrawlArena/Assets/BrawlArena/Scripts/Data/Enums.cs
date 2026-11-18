@@ -88,6 +88,8 @@ namespace BrawlArena.Data
         CowboyHat = 9,
         Halo = 10,
         Ears = 11,
+        SpikyHair = 12,
+        SpikyHairHorns = 13,
     }
 
     /// <summary>Waffen-Optik in der Hand.</summary>
@@ -104,6 +106,9 @@ namespace BrawlArena.Data
         Blaster = 8,
         Hammer = 9,
         Book = 10,
+        GreatBlade = 11,
+        ChainBlade = 12,
+        Katana = 13,
     }
 
     /// <summary>Gesichtsausdruck.</summary>
@@ -115,6 +120,7 @@ namespace BrawlArena.Data
         Cyclops = 3,
         Visor = 4,
         Sleepy = 5,
+        Mask = 6,
     }
 
     /// <summary>Prozeduraler Animationsstil (wird genutzt, wenn keine eigenen AnimationClips gesetzt sind).</summary>

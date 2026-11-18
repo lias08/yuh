@@ -90,5 +90,10 @@ namespace BrawlArena.Data
 
         [Tooltip("Farbe des Verwandlungseffekts.")]
         public Color transformColor = new Color(0.5f, 0.8f, 1f);
+        [Tooltip("Dauerhafte Energie-Aura in dieser Form (Alpha 0 = keine Aura).")]
+        public Color auraColor = new Color(0, 0, 0, 0);
+        [Tooltip("Sound der Verwandlung.")]
+        public SfxPreset transformSound = SfxPreset.SuperReady;
+        public AudioClip transformClip;
     }
 }

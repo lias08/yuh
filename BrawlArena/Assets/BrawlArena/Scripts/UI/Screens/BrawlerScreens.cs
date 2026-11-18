@@ -76,11 +76,6 @@ namespace BrawlArena.UI
                     var sel = UIFactory.IconImage(c, Icon.Check, 64);
                     sel.rectTransform.Place(1, 0.22f, -6, 6, 64, 64, 1, 0);
                 }
-                if (ContentDatabase.CustomBrawlerIds.Contains(def.id))
-                {
-                    var own = UIFactory.Label(c, "EIGENER", 22, Palette.Purple);
-                    own.rectTransform.Place(0.5f, 0.22f, 0, 20, 200, 30);
-                }
             }
             else
             {
@@ -164,12 +159,12 @@ namespace BrawlArena.UI
             // ------------------------------------------------ Aktionsleiste (unten rechts)
             if (!unlocked)
             {
-                var unlock = UIFactory.Button(Root, "Freischalten   " + def.CoinPrice, Palette.Green, () =>
-                {
-                    if (Economy.UnlockWithCoins(def)) { AudioManager.Sfx(SfxPreset.Confirm); UIManager.Instance.ShowRewards("Neuer Brawler!", new List<Reward> { new Reward { type = RewardType.Brawler, label = def.displayName + " freigeschaltet!" } }, Refresh); }
-                    else UIManager.Instance.Toast("Nicht genug Münzen! Spiele Matches oder öffne Boxen.", Palette.Red);
-                }, 40, Icon.Coin);
-                ((RectTransform)unlock.transform).Place(0.7f, 0.02f, 0, 0, 640, 130, 0.5f, 0);
+                var info = UIFactory.FancyPanel(Root, Palette.Panel, "Locked");
+                info.rectTransform.Place(0.7f, 0.02f, 0, 0, 900, 130, 0.5f, 0);
+                var lk = UIFactory.IconImage(info.transform, Icon.Lock, 80);
+                lk.rectTransform.Place(0, 0.5f, 24, 0, 80, 80, 0, 0.5f);
+                UIFactory.Label(info.transform, "Nur mit Glück aus Boxen freischaltbar!", 34, Palette.Yellow, TextAnchor.MiddleLeft)
+                    .rectTransform.Fill().offsetMin = new Vector2(120, 0);
                 return;
             }
 

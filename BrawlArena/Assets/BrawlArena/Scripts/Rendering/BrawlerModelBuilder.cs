@@ -159,6 +159,8 @@ namespace BrawlArena.Rendering
                 case HatStyle.Antenna: return 0.3f;
                 case HatStyle.Crown: case HatStyle.Horns: case HatStyle.Halo: case HatStyle.Ears: return 0.22f;
                 case HatStyle.Mohawk: case HatStyle.CowboyHat: return 0.2f;
+                case HatStyle.SpikyHair: return 0.25f;
+                case HatStyle.SpikyHairHorns: return 0.32f;
                 default: return 0.05f;
             }
         }
@@ -236,6 +238,24 @@ namespace BrawlArena.Rendering
                     mb.Add(ProcMesh.Box, c + new Vector3(0, ey, fz), Quaternion.identity, new Vector3(r * 1.5f, r * 0.34f, 0.08f), a.secondaryColor);
                     mb.Add(ProcMesh.Box, c + new Vector3(0, ey + r * 0.05f, fz + 0.045f), Quaternion.identity, new Vector3(r * 1.3f, r * 0.08f, 0.02f), White);
                     break;
+                case FaceStyle.Mask:
+                {
+                    // Knochenweiße Gesichtsmaske mit Streifen-Markierungen und dunklen Augenschlitzen
+                    Color bone = new Color(0.97f, 0.96f, 0.92f);
+                    mb.Add(ProcMesh.Sphere, c + new Vector3(0, -r * 0.05f, r * 0.42f), Quaternion.identity, new Vector3(r * 1.85f, r * 1.75f, r * 1.25f), bone);
+                    for (int side = -1; side <= 1; side += 2)
+                    {
+                        mb.Add(ProcMesh.Box, c + new Vector3(ex * side, ey, r * 1.02f), Quaternion.Euler(0, 0, -12f * side), new Vector3(eyeS * 1.1f, eyeS * 0.35f, 0.05f), Dark);
+                        mb.Add(ProcMesh.SphereLow, c + new Vector3(ex * side, ey, r * 1.04f), Quaternion.identity, new Vector3(eyeS * 0.28f, eyeS * 0.22f, 0.03f), a.eyeColor);
+                        // Markierungen (Zweitfarbe) – zwei Streifen pro Seite
+                        mb.Add(ProcMesh.Box, c + new Vector3(ex * side * 0.95f, ey + r * 0.38f, r * 0.92f), Quaternion.Euler(-20, 0, 0), new Vector3(r * 0.09f, r * 0.42f, 0.04f), a.secondaryColor);
+                        mb.Add(ProcMesh.Box, c + new Vector3(ex * side * 1.25f, ey - r * 0.4f, r * 0.88f), Quaternion.Euler(20, 0, 15f * side), new Vector3(r * 0.08f, r * 0.45f, 0.04f), a.secondaryColor);
+                    }
+                    // Zahnreihe
+                    for (int i = -2; i <= 2; i++)
+                        mb.Add(ProcMesh.Box, c + new Vector3(i * r * 0.13f, -r * 0.45f, r * 0.98f), Quaternion.identity, new Vector3(r * 0.08f, r * 0.16f, 0.04f), Color.Lerp(bone, Dark, 0.25f));
+                    break;
+                }
                 case FaceStyle.Cool:
                     mb.Add(ProcMesh.Box, c + new Vector3(ex, ey, fz), Quaternion.identity, new Vector3(eyeS * 1.2f, eyeS * 0.7f, 0.05f), Dark);
                     mb.Add(ProcMesh.Box, c + new Vector3(-ex, ey, fz), Quaternion.identity, new Vector3(eyeS * 1.2f, eyeS * 0.7f, 0.05f), Dark);
@@ -257,7 +277,7 @@ namespace BrawlArena.Rendering
             }
 
             // Mund
-            if (a.bodyShape != BodyShape.Robot && a.face != FaceStyle.Visor)
+            if (a.bodyShape != BodyShape.Robot && a.face != FaceStyle.Visor && a.face != FaceStyle.Mask)
             {
                 Vector3 m = c + new Vector3(0, -r * 0.38f, r * 0.82f);
                 if (a.face == FaceStyle.Angry)
@@ -327,6 +347,36 @@ namespace BrawlArena.Rendering
                     mb.Add(ProcMesh.Cylinder, top + new Vector3(0, r * 0.12f, 0), Quaternion.identity, new Vector3(r * 1.35f, r * 0.7f, r * 1.25f), hc);
                     mb.Add(ProcMesh.Cylinder, top - new Vector3(0, r * 0.08f, 0), Quaternion.identity, new Vector3(r * 1.38f, 0.07f, r * 1.28f), a.secondaryColor);
                     break;
+                case HatStyle.SpikyHair:
+                case HatStyle.SpikyHairHorns:
+                {
+                    // Stachelfrisur: Kappe + strahlenförmige Zacken nach oben/hinten
+                    mb.Add(ProcMesh.Hemisphere, c - new Vector3(0, r * 0.02f, r * 0.06f), Quaternion.Euler(-10, 0, 0), new Vector3(r * 2.12f, r * 1.9f, r * 2.12f), hc);
+                    int spikes = 11;
+                    for (int i = 0; i < spikes; i++)
+                    {
+                        float t = i / (float)(spikes - 1);
+                        float yaw = Mathf.Lerp(-150f, 150f, t);
+                        float pitch = Mathf.Lerp(28f, 55f, Mathf.Abs(t - 0.5f) * 2f);
+                        Quaternion q = Quaternion.Euler(0, yaw + 180f, 0) * Quaternion.Euler(-pitch, 0, 0);
+                        Vector3 dir = q * Vector3.up;
+                        Vector3 basePos = c + dir * r * 0.75f + Vector3.up * r * 0.1f;
+                        float len = (0.32f + (i % 3) * 0.06f) * r * 2.2f;
+                        mb.Add(ProcMesh.Cone, basePos + dir * len * 0.4f, Quaternion.FromToRotation(Vector3.up, dir), new Vector3(r * 0.42f, len, r * 0.42f), Color.Lerp(hc, Color.white, (i % 2) * 0.08f));
+                    }
+                    // Pony vorne
+                    for (int i = -1; i <= 1; i++)
+                        mb.Add(ProcMesh.Cone, c + new Vector3(i * r * 0.32f, r * 0.62f, r * 0.72f), Quaternion.Euler(140f, i * 15f, 0), new Vector3(r * 0.3f, r * 0.55f, r * 0.3f), hc);
+                    if (a.hat == HatStyle.SpikyHairHorns)
+                        for (int side = -1; side <= 1; side += 2)
+                        {
+                            Color horn = new Color(0.95f, 0.93f, 0.88f);
+                            Vector3 h0 = c + new Vector3(r * 0.62f * side, r * 0.62f, r * 0.2f);
+                            mb.Add(ProcMesh.Cone, h0, Quaternion.Euler(-25, 0, -45f * side), new Vector3(0.16f, 0.32f, 0.16f), horn);
+                            mb.Add(ProcMesh.Cone, h0 + new Vector3(0.17f * side, 0.2f, -0.05f), Quaternion.Euler(-40, 0, -15f * side), new Vector3(0.1f, 0.24f, 0.1f), horn);
+                        }
+                    break;
+                }
                 case HatStyle.Halo:
                     mb.Add(ProcMesh.Torus, top + new Vector3(0, 0.2f, 0), Quaternion.identity, new Vector3(r * 1.3f, r * 1.3f, r * 1.3f), new Color(1f, 0.95f, 0.5f));
                     break;
@@ -399,6 +449,42 @@ namespace BrawlArena.Rendering
                     mb.Add(ProcMesh.Box, new Vector3(0, 0.11f, 0.1f), Quaternion.Euler(-30, 0, 0), new Vector3(0.25f, 0.03f, 0.2f), White);
                     mb.Add(ProcMesh.SphereLow, new Vector3(0, 0.25f, 0.15f), Quaternion.identity, Vector3.one * 0.1f, s2);
                     return new Vector3(0, 0.2f, 0.25f);
+                case WeaponStyle.GreatBlade:
+                {
+                    // Breite Großklinge mit rundem Stichblatt und Edelstein
+                    Color blade = new Color(0.85f, 0.88f, 0.95f);
+                    mb.Add(ProcMesh.Cylinder, new Vector3(0, 0.02f, -0.06f), Quaternion.Euler(90, 0, 0), new Vector3(0.07f, 0.2f, 0.07f), w);
+                    mb.Add(ProcMesh.Cylinder, new Vector3(0, 0.02f, 0.06f), Quaternion.Euler(90, 0, 0), new Vector3(0.22f, 0.04f, 0.22f), s2);
+                    mb.Add(ProcMesh.Box, new Vector3(0, 0.06f, 0.55f), Quaternion.identity, new Vector3(0.05f, 0.26f, 0.9f), blade);
+                    mb.Add(ProcMesh.Box, new Vector3(0, -0.06f, 0.5f), Quaternion.identity, new Vector3(0.03f, 0.04f, 0.8f), Color.Lerp(blade, Dark, 0.35f));
+                    mb.Add(ProcMesh.Box, new Vector3(0, 0.1f, 1.02f), Quaternion.Euler(45, 0, 0), new Vector3(0.05f, 0.2f, 0.2f), blade);
+                    mb.Add(ProcMesh.SphereLow, new Vector3(0, 0.02f, 0.06f), Quaternion.identity, Vector3.one * 0.08f, s2);
+                    return new Vector3(0, 0.05f, 1.1f);
+                }
+                case WeaponStyle.ChainBlade:
+                {
+                    // Lange zweifarbige Klinge mit Kettengliedern am Griff
+                    Color blade = new Color(0.9f, 0.92f, 1f);
+                    mb.Add(ProcMesh.Cylinder, new Vector3(0, 0.02f, -0.05f), Quaternion.Euler(90, 0, 0), new Vector3(0.06f, 0.22f, 0.06f), w);
+                    mb.Add(ProcMesh.Box, new Vector3(0, 0.02f, 0.08f), Quaternion.Euler(0, 0, 45), new Vector3(0.16f, 0.16f, 0.04f), s2);
+                    mb.Add(ProcMesh.Box, new Vector3(0, 0.04f, 0.6f), Quaternion.identity, new Vector3(0.04f, 0.18f, 1.0f), blade);
+                    mb.Add(ProcMesh.Box, new Vector3(0, 0.12f, 0.6f), Quaternion.identity, new Vector3(0.045f, 0.04f, 1.0f), Dark);
+                    mb.Add(ProcMesh.Cone, new Vector3(0, 0.04f, 1.15f), Quaternion.Euler(90, 0, 0), new Vector3(0.05f, 0.14f, 0.2f), blade);
+                    for (int i = 0; i < 4; i++)
+                        mb.Add(ProcMesh.Torus, new Vector3(0, -0.04f - i * 0.07f, -0.17f - i * 0.03f), Quaternion.Euler(0, i % 2 == 0 ? 0 : 90, 90), Vector3.one * 0.14f, new Color(0.6f, 0.6f, 0.65f));
+                    return new Vector3(0, 0.04f, 1.2f);
+                }
+                case WeaponStyle.Katana:
+                {
+                    // Schlanke, sehr lange dunkle Klinge mit eckigem Stichblatt
+                    Color blade = new Color(0.12f, 0.1f, 0.16f);
+                    mb.Add(ProcMesh.Cylinder, new Vector3(0, 0.02f, -0.07f), Quaternion.Euler(90, 0, 0), new Vector3(0.06f, 0.26f, 0.06f), Color.Lerp(w, Color.white, 0.2f));
+                    mb.Add(ProcMesh.Box, new Vector3(0, 0.02f, 0.08f), Quaternion.identity, new Vector3(0.2f, 0.06f, 0.04f), s2);
+                    mb.Add(ProcMesh.Box, new Vector3(0, 0.04f, 0.68f), Quaternion.Euler(-2, 0, 0), new Vector3(0.035f, 0.11f, 1.15f), blade);
+                    mb.Add(ProcMesh.Box, new Vector3(0, 0.0f, 0.68f), Quaternion.Euler(-2, 0, 0), new Vector3(0.04f, 0.025f, 1.15f), s2);
+                    mb.Add(ProcMesh.Cone, new Vector3(0, 0.07f, 1.3f), Quaternion.Euler(80, 0, 0), new Vector3(0.04f, 0.16f, 0.1f), blade);
+                    return new Vector3(0, 0.05f, 1.35f);
+                }
                 case WeaponStyle.Bow:
                     return new Vector3(0, 0.05f, 0.3f);
                 default:

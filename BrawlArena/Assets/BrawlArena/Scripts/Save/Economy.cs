@@ -161,16 +161,6 @@ namespace BrawlArena.Save
             return true;
         }
 
-        public static bool UnlockWithCoins(BrawlerDefinition def)
-        {
-            var p = SaveSystem.Profile;
-            if (p.IsUnlocked(def) || p.coins < def.CoinPrice) return false;
-            p.coins -= def.CoinPrice;
-            p.Get(def.id).unlocked = true;
-            SaveSystem.Save();
-            return true;
-        }
-
         public static bool BuySkin(SkinDefinition skin)
         {
             var p = SaveSystem.Profile;
@@ -292,20 +282,8 @@ namespace BrawlArena.Save
                     }
                     road.Add(new TrophyRoadStep { trophies = t[i], reward = r });
                 }
-                // Feste Brawler-Freischaltungen auf dem Pfad
-                AssignRoadBrawler(1, "brocken");
-                AssignRoadBrawler(5, "lumi");
-                AssignRoadBrawler(9, "bumm");
-                AssignRoadBrawler(14, "zack");
                 return road;
             }
-        }
-
-        private static void AssignRoadBrawler(int index, string id)
-        {
-            var b = ContentDatabase.GetBrawler(id);
-            if (b == null || index >= road.Count) return;
-            road[index].reward = new Reward { type = RewardType.Brawler, amount = 1, targetId = id, label = "Brawler: " + b.displayName };
         }
 
         public static bool CanClaimRoad(int index)
@@ -333,6 +311,27 @@ namespace BrawlArena.Save
             int n = 0;
             for (int i = 0; i < TrophyRoad.Count; i++) if (CanClaimRoad(i)) n++;
             return n;
+        }
+
+        // ------------------------------------------------------------------ Codes
+        /// <summary>Löst einen Code ein. "67" schaltet alle Brawler (und Skins) frei.</summary>
+        public static List<Reward> RedeemCode(string code)
+        {
+            code = (code ?? "").Trim();
+            if (code != "67") return null;
+            var p = SaveSystem.Profile;
+            var got = new List<Reward>();
+            foreach (var b in ContentDatabase.Brawlers)
+                if (!p.IsUnlocked(b))
+                {
+                    p.Get(b.id).unlocked = true;
+                    got.Add(new Reward { type = RewardType.Brawler, amount = 1, targetId = b.id, label = b.displayName + " freigeschaltet!" });
+                }
+            foreach (var s in ContentDatabase.Skins)
+                if (!p.ownedSkins.Contains(s.id)) p.ownedSkins.Add(s.id);
+            if (got.Count == 0) got.Add(new Reward { type = RewardType.Brawler, amount = 0, label = "Du besitzt bereits alle Brawler!" });
+            SaveSystem.Save();
+            return got;
         }
 
         // ------------------------------------------------------------------ Shop

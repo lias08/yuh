@@ -55,6 +55,25 @@ namespace BrawlArena.Gameplay
             {
                 case AttackKind.Shot:
                 {
+                    if (spec.chargeTime > 0.01f)
+                    {
+                        // Aufgeladener Schuss: Energie sammelt sich, dann ein gewaltiger Hieb nach vorne
+                        owner.Root(spec.chargeTime + 0.15f);
+                        owner.Anim.PlayAttack(SwingDirection.Overhead, true, spec.chargeTime + 0.2f);
+                        FX.PowerUp(owner.Position, spec.color);
+                        FX.ShakeCamera(0.15f);
+                        for (int i = 1; i <= 4; i++)
+                            match.Schedule(spec.chargeTime * i / 5f, () => { if (owner.IsAlive) { FX.Ring(owner.Position, 2.2f, spec.color, 0.3f); FX.Sparkle(owner.MuzzlePosition, spec.color); } });
+                        match.Schedule(spec.chargeTime, () =>
+                        {
+                            if (!owner.IsAlive) return;
+                            FireSpread(owner, spec, ctx.AimDirection, spec.projectileCount, spec.spreadAngle, mult, isSuper);
+                            FX.Slash(owner.Position, ctx.AimDirection, 3f, 160f, spec.color, true);
+                            FX.Explosion(owner.MuzzlePosition, 1.2f, spec.color);
+                            AudioManager.Sfx(SfxPreset.Explosion, owner.Position);
+                        });
+                        break;
+                    }
                     owner.Anim.PlayAttack(SwingDirection.Thrust, false, 0.22f);
                     for (int b = 0; b < spec.burstCount; b++)
                     {

@@ -20,7 +20,6 @@ namespace BrawlArena.Net
             "Funkenflug", "Brummbär", "Lila Laune", "Raketenrudi", "Kicher-Karl", "Mondkalb", "Feuerzahn", "Bolzen"
         };
 
-        private MatchRequest request;
         private Action<int, int> progress;
         private Action<MatchConfig> found;
         private MatchConfig pending;
@@ -30,7 +29,7 @@ namespace BrawlArena.Net
 
         public void FindMatch(MatchRequest req, Action<int, int> onProgress, Action<MatchConfig> onFound)
         {
-            request = req; progress = onProgress; found = onFound;
+            progress = onProgress; found = onFound;
             pending = Build(req);
             joined = 1;
             timer = 0f;
@@ -84,8 +83,7 @@ namespace BrawlArena.Net
 
             var names = new List<string>(BotNames);
             Shuffle(names);
-            var pool = ContentDatabase.Brawlers.FindAll(b => !ContentDatabase.CustomBrawlerIds.Contains(b.id));
-            if (pool.Count == 0) pool = ContentDatabase.Brawlers;
+            var pool = ContentDatabase.Brawlers;
             float skill = Mathf.Clamp(0.3f + local.trophies / 700f, 0.3f, 0.92f);
             int nameIdx = 0;
 

@@ -2,7 +2,7 @@
 
 Ein eigenständiges 3D-Arena-Brawler-Spiel im Stil schneller Mobile-Team-Shooter: isometrische Kamera,
 Cartoon-Grafik, Touch-Joysticks, Bots, sieben Spielmodi, Fortschrittssystem und ein komplett
-datengetriebenes **Charakter-System** (im Unity-Editor *und* direkt im Spiel).
+datengetriebenes **Charakter-System** (ScriptableObjects im Unity-Editor).
 
 Alle Grafiken, Modelle, Icons, Sounds und die Musik werden **im Code erzeugt** – es werden keine fremden
 Assets verwendet. Eigene Modelle, Animationen, Sounds, Schriftarten und Icons können jederzeit ergänzt werden.
@@ -70,10 +70,10 @@ Der Workflow `.github/workflows/build-android.yml` baut die APK in der Cloud (ga
 | **Gameplay** | Virtueller Bewegungs-Joystick (folgt dem Finger), Angriffs- und Super-Joystick: Antippen = Auto-Zielen, Ziehen = manuell zielen mit Zielanzeige. Lebenspunkte, Schaden, Munition mit Nachladen, Super-Aufladung durch Treffer, automatische Heilung, Busch-Tarnung, Wasser, zerstörbare Wände/Kisten, Rückstoß, Verlangsamung, Betäubung, Schilde, Respawn, Sieg-/Niederlagen-Bildschirm. |
 | **Angriffsarten** | Schuss (Einzel/Schrot/Salve), Wurf über Wände, Nahkampf mit **Kombos**, Strahl, Bumerang, Rundumschlag, Sturmangriff, Sprung, Heilzone, Schadenszone, Geschützturm, Schild, eigene Muster. |
 | **Spielmodi** | 3v3-Teamkampf, Gem Grab, Brawl Ball, Showdown (10 Spieler, Giftgas, Power-Würfel), Solo-Überleben (Wellen + Boss), Duo-Überleben (mit Bot-Partner), Trainingsmodus (Puppen + Schadensmessung). Jeder Modus hat eigene Regeln, Spawnpunkte und Siegbedingungen. |
-| **Brawler** | 12 eigene Charaktere in 6 Seltenheiten, darunter **Klingengeist** mit 4 Evolutionsstufen, plus Gegner-Roboter, Boss und Trainingspuppen. |
+| **Brawler** | Aktuell **Klingengeist** (Legendär, 4 Evolutionsformen) – weitere Brawler werden ergänzt. Dazu Gegner-Roboter, Boss und Trainingspuppen. |
 | **Karten** | 7 Karten (Wüste, Ruinen, Stadion, Wald) mit Deko, Büschen, Wasser, Kisten. |
 | **KI** | Bots mit A*-Wegfindung, Zielwahl, Vorhalten, Ausweichen, Rückzug, Super-Einsatz und Modus-Zielen (Edelsteine, Ball, Gas, Boxen). Stärke passt sich den Trophäen an. |
-| **Menüs** | Hauptmenü mit 3D-Brawler, Brawler-Liste, Charakterdetails (3D-Vorschau, Werte, Upgrades, Skins), Shop, Trophäenpfad, Modus-/Kartenwahl, Einstellungen, Profil, Matchmaking, Belohnungen, In-Game-Charakter-Editor. |
+| **Menüs** | Hauptmenü mit 3D-Brawler, Brawler-Liste, Charakterdetails (3D-Vorschau, Werte, Upgrades, Skins), Shop, Trophäenpfad, Modus-/Kartenwahl, Einstellungen, Profil, Matchmaking, Belohnungen, Code-Menü. |
 | **Fortschritt** | Trophäen pro Brawler, Spielerlevel/XP, Münzen, Edelsteine, Tokens, Kraftpunkte, Brawler-Level 1–11, Boxen, tägliche Belohnung, Gratis-Box, Skins. Alles wird im Spiel verdient – **keine Echtgeld-Käufe**. |
 | **Technik** | Speicherstand als JSON (atomar + Backup), Offline gegen Bots, eigene Toon-Shader mit Umriss und Schatten, Partikeleffekte, synthetische Sounds & Musik, Qualitätsstufen, Safe-Area, Android-Zurück-Taste. |
 
@@ -100,11 +100,10 @@ Der Workflow `.github/workflows/build-android.yml` baut die APK in der Cloud (ga
 Tipp: **BrawlArena → Standardinhalte als Assets exportieren** legt alle mitgelieferten Brawler, Karten,
 Modi und Skins als bearbeitbare Assets an. Ein Asset mit derselben ID ersetzt den eingebauten Eintrag.
 
-### Direkt im Spiel (ohne Unity)
+### Freischalten im Spiel
 
-Hauptmenü → **Editor**: Aussehen, Farben, Werte, Angriff (inkl. Kombo-Schläge und Energiewelle), Super und
-Sounds mit Live-3D-Vorschau einstellen → **Speichern** → der Brawler ist sofort in der Brawler-Liste
-und mit **Testen** im Trainingsmodus spielbar.
+Neue Brawler gibt es **nur mit Glück aus Boxen** (Brawl-Box über Tokens, Gratis-Box, Shop-Boxen).
+In **Einstellungen → Code eingeben** schaltet der Code **`67`** sofort alle Brawler frei.
 
 ## 5. Evolution & Kombo-Angriffe
 
@@ -117,14 +116,17 @@ Reichweite, Tempo, Breite, Farbe).
 Hauptangriff und Super ersetzen sowie Leben/Tempo/Nachladen multiplizieren. Auslöser (`evolutionTrigger`):
 Super-Einsätze, K.O.s, Matchzeit, Brawler-Level oder verursachter Schaden; `threshold` legt den Wert fest.
 
-Beispiel **Klingengeist** (Vorlage: *BrawlArena → Neu → Brawler mit 4 Evolutionsstufen*):
+Beispiel **Klingengeist** – die Super lädt sich durch Schaden an Gegnern auf, jede Super schaltet
+dauerhaft (bis Matchende) die nächste Form frei. Jede Form hat eigenes Outfit, eigenes Schwert, eigene
+Haltung, eigene Aura und eigene Kombo. **Jede Kombo kostet genau 1 Munition**, jeder Hieb hat eine eigene
+Treffererkennung (pro Hieb trifft jedes Ziel höchstens einmal).
 
-| Stufe | Auslöser | 1 Munition = |
-|---|---|---|
-| 1 – Seelenklinge | Start | 1 kräftiger horizontaler Hieb |
-| 2 – Kettenklinge | 1. Super | 2 Hiebe: links→rechts, direkt zurück |
-| 3 – Maskenwut | 2. Super | 3 schnelle Hiebe, der letzte erzeugt eine kleine Energiewelle |
-| 4 – Wahre Klinge | 3. Super | 2 blitzschnelle Hiebe + kräftiger 3. Schlag mit großer Klingenwelle, neue Super |
+| Form | Aussehen | 1 Munition = | Super |
+|---|---|---|---|
+| 1 – Seelenwächter | Stachelfrisur, Robe, Großklinge | 1 kräftiger horizontaler Hieb | Mondsichelwelle → Form 2 |
+| 2 – Kettenläufer | Mantel, Kettenklinge, blaue Aura | 2 Hiebe (links→rechts, rechts→links) | Verstärkte Welle → Form 3 |
+| 3 – Maskenzorn | Knochenmaske mit Markierungen, Hörner, rote Aura | 3 Hiebe, der letzte mit kleiner Welle | Zornwelle (zerschneidet Wände) → Form 4 |
+| 4 – Wahre Klinge | Dunkler Mantel, lange dunkle Klinge, helle Aura | 2 blitzschnelle Hiebe + Abschlusshieb mit Klingenwelle | **Finale Mondsichel**: Aufladen, gigantische Welle, Explosion beim Aufprall (wiederholbar) |
 
 ## 6. Eigene 3D-Modelle & Animationen
 

@@ -168,11 +168,14 @@ namespace BrawlArena.Gameplay
 
             if (animate)
             {
-                Color c = Def.forms[index - 1].transformColor;
+                var form = Def.forms[index - 1];
+                Color c = form.transformColor;
                 Anim.PlayTransform();
                 FX.PowerUp(transform.position, c);
-                FX.ShakeCamera(0.25f);
-                AudioManager.Sfx(SfxPreset.SuperReady, transform.position);
+                FX.Explosion(transform.position, 1.8f, c);
+                FX.ShakeCamera(0.35f);
+                Root(0.5f);
+                AudioManager.Instance.Play(form.transformClip, form.transformSound, transform.position);
                 Heal(MaxHealth * 0.3f, false);
                 if (Evolved != null) Evolved(this);
             }
@@ -234,6 +237,7 @@ namespace BrawlArena.Gameplay
             else regenTick = 0f;
 
             InBush = ctx.Arena.IsBush(transform.position);
+            UpdateAura(dt);
 
             if (ctx.InputLocked) { Anim.SetMovement(0f); return; }
 
@@ -249,6 +253,22 @@ namespace BrawlArena.Gameplay
                 default: UpdateNormal(input, dt); break;
             }
             if (Def.evolutionTrigger == EvolutionTrigger.MatchTime) CheckEvolution();
+        }
+
+        private float auraTimer;
+
+        /// <summary>Dauerhafte Energie-Aura der aktuellen Evolutionsform.</summary>
+        private void UpdateAura(float dt)
+        {
+            if (FormIndex == 0 || FX.Quality == 0) return;
+            Color aura = Def.forms[FormIndex - 1].auraColor;
+            if (aura.a <= 0.01f || !Anim.Rig.renderers[0].enabled) return;
+            auraTimer -= dt;
+            if (auraTimer > 0f) return;
+            auraTimer = FX.Quality >= 2 ? 0.07f : 0.15f;
+            Vector3 p = transform.position + new Vector3(Random.Range(-0.4f, 0.4f), Random.Range(0.1f, VisualHeight), Random.Range(-0.4f, 0.4f));
+            FX.Trail(p, aura, 0.45f);
+            if (Random.value < 0.4f) FX.Sparkle(p, aura);
         }
 
         private void UpdateNormal(InputFrame input, float dt)
@@ -490,6 +510,9 @@ namespace BrawlArena.Gameplay
             motionT = 0f; motionDur = 0.18f;
             motionVel = dir * (distance / motionDur);
         }
+
+        /// <summary>Hält den Brawler kurz fest (z.B. während ein Angriff aufgeladen wird).</summary>
+        public void Root(float seconds) { stunUntil = Mathf.Max(stunUntil, Time.time + seconds); }
 
         public void AddInvulnerability(float seconds) { invulnerableUntil = Mathf.Max(invulnerableUntil, Time.time + seconds); }
 

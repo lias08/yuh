@@ -96,6 +96,12 @@ namespace BrawlArena.Data
         [Tooltip("Zerstört dieser Angriff Wände und Kisten im Wirkungsbereich?")]
         public bool destroysWalls = false;
 
+        [Header("Spezial")]
+        [Tooltip("Aufladezeit vor dem Abfeuern (Energie sammelt sich an der Waffe). 0 = sofort.")]
+        public float chargeTime = 0f;
+        [Tooltip("Explodiert das Projektil beim Aufprall / am Ende der Reichweite (Radius = areaRadius)?")]
+        public bool explodeOnImpact = false;
+
         [Header("Kombo (Nahkampf-Schlagfolge)")]
         [Tooltip("Wenn gefüllt: ein Munitionsbalken löst ALLE Schritte nacheinander aus (z.B. 3 Schläge + Welle). " +
                  "Gilt für kind = Melee.")]
