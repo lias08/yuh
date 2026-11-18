@@ -18,6 +18,15 @@ var alive := true
 var aim_dir := Vector3(0, 0, -1)
 var rig: Dictionary
 var damage_dealt := 0.0
+var team := 0
+var is_bot := false
+var display_name := "Du"
+var kills := 0
+var deaths := 0
+var stun_until := 0.0
+var slow_until := 0.0
+var knock := Vector3.ZERO
+var proxy: Dictionary = {}      # Ziel-Eintrag für die Treffererkennung
 var gadget_uses := 3
 var gadget_cd := 0.0
 var shield_until := 0.0
@@ -52,7 +61,22 @@ func form() -> Dictionary:
 	return def.forms[form_index]
 
 func move_speed() -> float:
-	return def.speed * form().speed_mul * (1.4 if _time < speed_until else 1.0)
+	return def.speed * form().speed_mul * (1.4 if _time < speed_until else 1.0) * (0.5 if _time < slow_until else 1.0)
+
+func stunned() -> bool:
+	return _time < stun_until
+
+## Betäubung/Verlangsamung/Rückstoß von außen (Gegnertreffer).
+func apply_status(efx: Dictionary, from: Vector3) -> void:
+	if efx.get("stun", 0.0) > 0.0:
+		stun_until = max(stun_until, _time + efx.stun)
+	if efx.get("slow", 0.0) > 0.0:
+		slow_until = max(slow_until, _time + efx.slow)
+	if efx.get("knock", 0.0) > 0.0 and from != Vector3.INF:
+		var push := position - from
+		push.y = 0
+		if push.length() > 0.01:
+			knock = push.normalized() * efx.knock
 
 func gadget() -> Dictionary:
 	return def.get("gadget", {})
@@ -102,7 +126,7 @@ func _face(dir: Vector3) -> void:
 	rig.root.rotation.y = atan2(-dir.x, -dir.z)
 
 func is_rooted() -> bool:
-	return _time < _rooted_until
+	return _time < _rooted_until or stunned()
 
 # ------------------------------------------------------------------ Bewegung
 func update_movement(input: Vector2, delta: float) -> void:
@@ -114,6 +138,10 @@ func update_movement(input: Vector2, delta: float) -> void:
 		v = v.normalized()
 	if is_rooted():
 		v = Vector3.ZERO
+	if knock.length() > 0.01:
+		var k: Vector3 = knock * min(1.0, delta * 10.0)
+		position = arena.move_circle(position, k, radius)
+		knock -= k
 	var before := position
 	position = arena.move_circle(position, v * move_speed() * delta, radius)
 	var moved: float = (position - before).length() / max(delta, 0.0001)
@@ -256,6 +284,9 @@ func heal(amount: float) -> void:
 
 func respawn(pos: Vector3) -> void:
 	position = pos
+	stun_until = 0.0
+	slow_until = 0.0
+	knock = Vector3.ZERO
 	alive = true
 	visible = true
 	hp = max_hp

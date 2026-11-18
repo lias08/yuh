@@ -1,0 +1,54 @@
+# Baut die Web-Version (läuft im Browser, auch auf iPhone/iPad in Safari) und veröffentlicht sie
+# auf GitHub Pages:  https://lias08.github.io/yuh/
+# Einmalig nötig: Settings > Pages > "Deploy from a branch" > Branch "gh-pages" / root > Save.
+name: Web-Version veröffentlichen
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'godot/**'
+      - '.github/workflows/build-web.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  web:
+    name: Web-Export
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.3
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Export-Vorlagen einrichten
+        run: |
+          mkdir -p ~/.local/share/godot/export_templates
+          cp -r /root/.local/share/godot/export_templates/* ~/.local/share/godot/export_templates/ || true
+          ls ~/.local/share/godot/export_templates
+
+      - name: Spiel testen (headless)
+        run: |
+          cd godot
+          godot --headless --path . --import || true
+          godot --headless --path . -- --selftest
+
+      - name: Web exportieren (ohne Threads → läuft ohne Spezial-Server-Header, auch auf iOS)
+        run: |
+          mkdir -p build/web
+          cd godot
+          godot --headless --verbose --path . --export-release "Web" ../build/web/index.html
+          cd ..
+          touch build/web/.nojekyll
+          ls -la build/web
+
+      - name: Auf GitHub Pages veröffentlichen
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build/web
+          publish_branch: gh-pages
+          force_orphan: true
+          commit_message: "Web-Version ${{ github.run_number }}"

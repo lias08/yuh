@@ -55,7 +55,7 @@ jobs:
         run: |
           cd godot
           godot --headless --path . --import || true
-          godot --headless --path . -- --test
+          godot --headless --path . -- --selftest
 
       - name: APK exportieren
         run: |

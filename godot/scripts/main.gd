@@ -10,9 +10,10 @@ var stage_rig: Dictionary
 var stage_form := 0
 var current_match: Node3D
 var _t := 0.0
+var _back_to_shop := true
 
 func _ready() -> void:
-	if "--test" in OS.get_cmdline_user_args():
+	if "--selftest" in OS.get_cmdline_user_args():
 		_run_tests()
 		return
 	ui = CanvasLayer.new()
@@ -142,15 +143,135 @@ func show_menu() -> void:
 	var shop := Game.make_button("Shop", Color(1.0, 0.55, 0.15))
 	shop.pressed.connect(show_shop)
 	col.add_child(shop)
+	var road_n := Game.road_ready_count()
+	var road := Game.make_button(Game.t("Trophäenpfad") + ("  (%d!)" % road_n if road_n > 0 else ""), Color(0.95, 0.45, 0.2) if road_n > 0 else Color(0.8, 0.55, 0.25))
+	road.pressed.connect(show_road)
+	col.add_child(road)
 	var settings := Game.make_button("Einstellungen", Color(0.45, 0.45, 0.55))
 	settings.pressed.connect(show_settings)
 	col.add_child(settings)
 
-	var mode := Game.make_label("Modus: Training gegen Puppen", 24, Color.WHITE, 8)
-	_place(mode, Vector2(1, 1), Vector2(-430, -230))
+	var cur_mode: Dictionary = MODES[Game.data.get("mode", "training")]
+	var mode := Game.make_button(Game.t("Modus: ") + Game.t(cur_mode.name), cur_mode.color, Vector2(400, 70), 24)
+	mode.pressed.connect(show_modes)
+	_place(mode, Vector2(1, 1), Vector2(-430, -265))
+	var trophies := Game.make_label(Game.t("Trophäen") + ": %d" % int(Game.data.get("trophies", 0)), 28, Color(1, 0.85, 0.3), 8)
+	_place(trophies, Vector2(0, 1), Vector2(30, -80))
 	var play := Game.make_button("SPIELEN", Color(1.0, 0.8, 0.15), Vector2(400, 130), 46)
 	play.pressed.connect(start_match)
 	_place(play, Vector2(1, 1), Vector2(-430, -180))
+
+# ==================================================================== Trophäenpfad
+func show_road() -> void:
+	_clear()
+	_top_bar("TROPHÄENPFAD", true)
+	var info := Game.make_label(Game.t("Trophäen") + ": %d" % int(Game.data.trophies), 30, Color(1, 0.85, 0.3), 8)
+	_place(info, Vector2(0, 0), Vector2(40, 110))
+	var scroll := ScrollContainer.new()
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size = Vector2(1220, 500)
+	_place(scroll, Vector2(0, 0), Vector2(30, 160))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 18)
+	scroll.add_child(row)
+	var first_open := -1
+	for i in Game.ROAD.size():
+		var step: Dictionary = Game.ROAD[i]
+		var state: String = Game.road_state(i)
+		if first_open < 0 and state != "claimed":
+			first_open = i
+		var col: Color = Color(0.3, 0.75, 0.35) if state == "ready" else (Color(0.35, 0.35, 0.45) if state == "claimed" else Color(0.22, 0.2, 0.42))
+		var panel := Game.make_panel(col)
+		var vb := VBoxContainer.new()
+		vb.alignment = BoxContainer.ALIGNMENT_CENTER
+		vb.add_theme_constant_override("separation", 12)
+		vb.custom_minimum_size = Vector2(220, 430)
+		panel.add_child(vb)
+		var t := Game.make_label("%d" % step.trophies, 40, Color(1, 0.85, 0.3), 10)
+		t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		vb.add_child(t)
+		var sub := Game.make_label("Trophäen", 20, Color.WHITE, 6)
+		sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		vb.add_child(sub)
+		var holder := CenterContainer.new()
+		holder.custom_minimum_size = Vector2(220, 130)
+		var icon_col := {"coins": Color(1, 0.85, 0.25), "gems": Color(0.35, 1.0, 0.55), "skin": Color(1, 0.5, 0.85)}
+		if step.type == "box":
+			holder.add_child(_box_icon(Game.BOXES[step.box].color, 110))
+		else:
+			var ic := Panel.new()
+			var st := StyleBoxFlat.new()
+			st.bg_color = icon_col[step.type]
+			st.set_corner_radius_all(50 if step.type != "skin" else 18)
+			st.set_border_width_all(6)
+			st.border_color = Color(0.05, 0.03, 0.1)
+			ic.add_theme_stylebox_override("panel", st)
+			ic.custom_minimum_size = Vector2(90, 90)
+			holder.add_child(ic)
+		vb.add_child(holder)
+		var l := Game.make_label(Game.road_label(step), 22, Color.WHITE, 6)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size = Vector2(200, 0)
+		vb.add_child(l)
+		var btn_text: String = {"ready": "Abholen", "claimed": "Abgeholt", "locked": "Gesperrt"}[state]
+		var btn := Game.make_button(btn_text, Color(1, 0.8, 0.15) if state == "ready" else Color(0.4, 0.4, 0.45), Vector2(200, 76), 24)
+		var idx: int = i
+		btn.pressed.connect(func():
+			if Game.road_state(idx) != "ready":
+				_popup(Game.t("Gesperrt"), Game.t("Erreiche %d Trophäen in Teamkampf oder Showdown." % Game.ROAD[idx].trophies) if Game.data.lang == "de" else "Reach %d trophies in Team Battle or Showdown." % Game.ROAD[idx].trophies)
+				return
+			var rw := Game.claim_road(idx)
+			show_road()
+			_box_opening(Game.t("TROPHÄENPFAD"), Color(0.95, 0.6, 0.2), rw, false))
+		vb.add_child(btn)
+		row.add_child(panel)
+	# zum ersten offenen Schritt scrollen
+	await get_tree().process_frame
+	if is_instance_valid(scroll) and first_open > 0:
+		scroll.scroll_horizontal = int((first_open - 1) * 238)
+
+# ==================================================================== Modus-Auswahl
+const MODES := {
+	"training": {"name": "Training", "desc": "Teste deine Brawler an Puppen.\nKein Zeitlimit, keine Trophäen.", "color": Color(0.45, 0.5, 0.6)},
+	"team": {"name": "3v3 Teamkampf", "desc": "Du + 2 Bots gegen 3 Bots.\nZuerst 10 K.O.s gewinnt (2:30 Minuten).", "color": Color(0.9, 0.3, 0.35)},
+	"showdown": {"name": "Showdown", "desc": "Jeder gegen jeden – 7 Brawler.\nKein Respawn. Der Letzte gewinnt!", "color": Color(0.35, 0.75, 0.3)},
+}
+
+func show_modes() -> void:
+	_clear()
+	_top_bar("SPIELMODUS", true)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 26)
+	_place(row, Vector2(0.5, 0.5), Vector2(-610, -230))
+	for key in ["training", "team", "showdown"]:
+		var m: Dictionary = MODES[key]
+		var sel: bool = Game.data.get("mode", "training") == key
+		var card := Game.make_button("", m.color.lightened(0.15) if sel else m.color, Vector2(380, 440))
+		var vb := VBoxContainer.new()
+		vb.alignment = BoxContainer.ALIGNMENT_CENTER
+		vb.set_anchors_preset(Control.PRESET_FULL_RECT)
+		vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vb.add_theme_constant_override("separation", 20)
+		card.add_child(vb)
+		var t := Game.make_label(Game.t(m.name).to_upper(), 36, Color.WHITE, 10)
+		t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		vb.add_child(t)
+		var d := Game.make_label(m.desc, 22, Color.WHITE, 6)
+		d.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		d.custom_minimum_size = Vector2(340, 0)
+		vb.add_child(d)
+		if sel:
+			var s := Game.make_label("✔ AUSGEWÄHLT", 22, Color(1, 0.95, 0.5), 6)
+			s.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			vb.add_child(s)
+		var k: String = key
+		card.pressed.connect(func():
+			Game.data.mode = k
+			Game.save_game()
+			show_menu())
+		row.add_child(card)
 
 # ==================================================================== Brawler-Menü
 func show_brawlers() -> void:
@@ -404,7 +525,8 @@ func _buy_box(type: String, free: bool) -> void:
 
 ## Box-Öffnung: Box fällt herein, wackelt, springt auf (Lichtblitz) und zeigt die Belohnungen
 ## einzeln in der Bildschirmmitte. Antippen = weiter.
-func _box_opening(title: String, color: Color, rewards: Array) -> void:
+func _box_opening(title: String, color: Color, rewards: Array, back_to_shop := true) -> void:
+	_back_to_shop = back_to_shop
 	var layer := CanvasLayer.new()
 	layer.layer = 20
 	add_child(layer)
@@ -466,7 +588,7 @@ func _box_opening(title: String, color: Color, rewards: Array) -> void:
 		ct.tween_property(card, "scale", Vector2(1.15, 1.15), 0.18).set_trans(Tween.TRANS_BACK)
 		ct.tween_property(card, "scale", Vector2.ONE, 0.1)
 		Game.play_sfx("ready" if r.kind in ["brawler", "skin"] else "click", 1.0, 1.0 if r.kind != "coins" else 1.4)
-		hint.text = "Weiter (%d/%d)" % [state.index, rewards.size()]
+		hint.text = Game.t("Weiter") + " (%d/%d)" % [state.index, rewards.size()]
 
 	var tap := Button.new()
 	tap.flat = true
@@ -498,7 +620,7 @@ func _box_opening(title: String, color: Color, rewards: Array) -> void:
 				Game.play_sfx("explosion", 0.5, 1.6)
 				get_tree().create_timer(0.45).timeout.connect(func(): show_next.call(show_next))
 			else:
-				hint.text = "Noch %d x tippen!" % (3 - state.taps)
+				hint.text = ("Noch %d x tippen!" % (3 - state.taps)) if Game.data.lang == "de" else "Tap %d more times!" % (3 - state.taps)
 		elif state.phase == 1 and state.index <= rewards.size() and state.card != null:
 			show_next.call(show_next)
 	)
@@ -563,7 +685,10 @@ func _reward_summary(stage: Control, rewards: Array, layer: CanvasLayer) -> void
 	var ok := Game.make_button("Super!", Color(0.3, 0.8, 0.35), Vector2(240, 80), 30)
 	ok.pressed.connect(func():
 		layer.queue_free()
-		show_shop())
+		if _back_to_shop:
+			show_shop()
+		else:
+			show_road())
 	vb.add_child(ok)
 	# Der „Weiter“-Knopf über allem darf das OK nicht blockieren
 	for c in layer.get_children():
@@ -596,6 +721,18 @@ func show_settings() -> void:
 		Game.data.floating_joy = on
 		Game.save_game())
 	vb.add_child(joy)
+	vb.add_child(Game.make_label("Sprache", 30))
+	var lang_row := HBoxContainer.new()
+	lang_row.add_theme_constant_override("separation", 16)
+	vb.add_child(lang_row)
+	for lang in [["de", "Deutsch"], ["en", "English"]]:
+		var lb := Game.make_button(lang[1], Color(0.3, 0.75, 0.35) if Game.data.lang == lang[0] else Color(0.4, 0.4, 0.5), Vector2(240, 70), 26)
+		var code_l: String = lang[0]
+		lb.pressed.connect(func():
+			Game.data.lang = code_l
+			Game.save_game()
+			show_settings())
+		lang_row.add_child(lb)
 	vb.add_child(Game.make_label("Code eingeben", 30))
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", 16)
@@ -677,13 +814,22 @@ func start_match() -> void:
 
 func end_match() -> void:
 	var dmg := 0.0
+	var res := {}
 	if current_match:
 		dmg = current_match.total_damage
+		res = current_match.result
 		current_match.queue_free()
 		current_match = null
 	show_menu()
-	var coins := Game.award_training(dmg)
-	_popup("Training beendet", "Verursachter Schaden: %d\nBelohnung: %d Münzen" % [int(dmg), coins])
+	if res.is_empty():
+		if Game.data.get("mode", "training") == "training":
+			var coins := Game.award_training(dmg)
+			_popup("Training beendet", "Verursachter Schaden: %d\nBelohnung: %d Münzen" % [int(dmg), coins])
+		else:
+			_popup("Match verlassen", "Ohne Belohnung verlassen.")
+		return
+	var r := Game.award_match(res)
+	_popup("Belohnung", "Trophäen: %+d   (gesamt %d)\nMünzen: +%d" % [r.trophies, int(Game.data.trophies), r.coins])
 
 # ==================================================================== Automatischer Test (headless)
 func _run_tests() -> void:
@@ -783,6 +929,49 @@ func _run_tests() -> void:
 	log.append("Betäubung=%s, Kisten zerstört=%d (Kollision aktualisiert=%s), Gadget=%s" % [stunned, broken, walls_after == crates_before - broken, gadget_ok])
 	ok = ok and stunned and broken > 0 and walls_after == crates_before - broken and gadget_ok
 	mx.queue_free()
+	# Echte Gegner: 3v3 Teamkampf mit Bots
+	Game.data.selected = "funke"
+	Game.data.mode = "team"
+	var mt = preload("res://scripts/match.gd").new()
+	add_child(mt)
+	await get_tree().process_frame
+	var start_pos: Vector3 = mt.fighters[3].position
+	await get_tree().create_timer(8.0).timeout
+	var bot_dmg := 0.0
+	for f in mt.fighters:
+		if f.is_bot:
+			bot_dmg += f.damage_dealt
+	var moved: float = (mt.fighters[3].position - start_pos).length()
+	log.append("Teamkampf: %d Brawler, Bots bewegt=%.1f m, Bot-Schaden=%d, Punkte %d:%d" % [mt.fighters.size(), moved, int(bot_dmg), mt.score[0], mt.score[1]])
+	ok = ok and mt.fighters.size() == 6 and moved > 1.0 and bot_dmg > 0.0
+	mt.score = [10, 3]
+	mt._finish_team()
+	var rw_team: Dictionary = Game.award_match(mt.result)
+	log.append("Teamkampf-Ende: %s, Trophäen %+d, Münzen +%d" % [mt.result.outcome, rw_team.trophies, rw_team.coins])
+	ok = ok and mt.result.outcome == "victory" and rw_team.trophies > 0
+	mt.queue_free()
+	# Showdown: alle Gegner besiegen -> Platz 1
+	Game.data.mode = "showdown"
+	var ms = preload("res://scripts/match.gd").new()
+	add_child(ms)
+	await get_tree().process_frame
+	for f in ms.fighters:
+		if f != ms.player:
+			ms._damage_fighter(f, 999999.0, ms.player, {}, Vector3.INF)
+	log.append("Showdown: %d Brawler, Ergebnis %s Platz %d, K.O.s %d" % [ms.fighters.size(), ms.result.get("outcome", "-"), ms.result.get("rank", 0), ms.player.kills])
+	ok = ok and ms.fighters.size() == 7 and ms.result.get("outcome", "") == "victory" and ms.result.rank == 1
+	ms.queue_free()
+	Game.data.mode = "training"
+	# Trophäenpfad & Sprache
+	Game.data.trophies = 30
+	Game.data.road_claimed = []
+	var r0 := Game.claim_road(0)
+	var r_locked := Game.claim_road(5)
+	Game.data.lang = "en"
+	var en_ok: bool = Game.t("Einstellungen") == "Settings" and Game.t("Münzen: 5") == "Coins: 5"
+	Game.data.lang = "de"
+	log.append("Trophäenpfad: Stufe 1 abgeholt=%s, gesperrte Stufe blockiert=%s, Englisch=%s" % [r0.size() > 0, r_locked.is_empty(), en_ok])
+	ok = ok and r0.size() > 0 and r_locked.is_empty() and en_ok
 	# Box & Skin
 	Game.data.coins = 1000
 	Game.data.gems = 500

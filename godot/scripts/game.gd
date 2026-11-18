@@ -10,6 +10,7 @@ var data := {
 	"coins": 500, "gems": 20, "trophies": 0, "unlocked": [], "selected": "klingengeist",
 	"music": 0.6, "sfx": 0.8, "boxes_opened": 0,
 	"owned_skins": [], "equipped": {}, "last_free_box": 0.0, "infinite": false,
+	"road_claimed": [], "lang": "de", "mode": "training",
 }
 var brawlers: Array = []
 var _sfx_cache := {}
@@ -104,6 +105,121 @@ func redeem_code(code: String) -> String:
 		return "Du besitzt bereits alle Brawler und Skins!\nUnendlich Münzen und Edelsteine sind aktiv."
 	return "%d Brawler und %d Skins freigeschaltet!\nAb jetzt: unendlich Münzen und Edelsteine." % [count, skins]
 
+# ------------------------------------------------------------------ Trophäenpfad
+const ROAD := [
+	{"trophies": 10, "type": "coins", "amount": 100},
+	{"trophies": 25, "type": "box", "box": "brawl"},
+	{"trophies": 50, "type": "gems", "amount": 20},
+	{"trophies": 80, "type": "box", "box": "big"},
+	{"trophies": 120, "type": "coins", "amount": 300},
+	{"trophies": 170, "type": "skin"},
+	{"trophies": 230, "type": "box", "box": "big"},
+	{"trophies": 300, "type": "gems", "amount": 50},
+	{"trophies": 400, "type": "box", "box": "mega"},
+	{"trophies": 500, "type": "coins", "amount": 800},
+	{"trophies": 650, "type": "skin"},
+	{"trophies": 800, "type": "box", "box": "mega"},
+	{"trophies": 1000, "type": "gems", "amount": 150},
+]
+
+func road_state(i: int) -> String:
+	if i in data.road_claimed:
+		return "claimed"
+	return "ready" if int(data.trophies) >= ROAD[i].trophies else "locked"
+
+func road_label(step: Dictionary) -> String:
+	match step.type:
+		"coins": return "%d %s" % [step.amount, t("Münzen")]
+		"gems": return "%d %s" % [step.amount, t("Edelsteine")]
+		"box": return t(BOXES[step.box].name)
+		"skin": return t("Zufälliger Skin")
+	return ""
+
+## Belohnung abholen. Rückgabe: Belohnungsliste (wie bei Boxen).
+func claim_road(i: int) -> Array:
+	if road_state(i) != "ready":
+		return []
+	data.road_claimed.append(i)
+	var step: Dictionary = ROAD[i]
+	var rewards: Array = []
+	match step.type:
+		"coins":
+			data.coins += step.amount
+			rewards.append({"kind": "coins", "amount": step.amount, "text": road_label(step), "sub": "", "color": Color(1.0, 0.85, 0.25)})
+		"gems":
+			data.gems += step.amount
+			rewards.append({"kind": "gems", "amount": step.amount, "text": road_label(step), "sub": "", "color": Color(0.35, 1.0, 0.55)})
+		"box":
+			rewards = open_box(step.box, false, true)
+		"skin":
+			var sk := _roll_skin()
+			if sk.is_empty():
+				data.gems += 40
+				rewards.append({"kind": "gems", "amount": 40, "text": "40 " + t("Edelsteine"), "sub": t("Alle Skins schon im Besitz"), "color": Color(0.35, 1.0, 0.55)})
+			else:
+				data.owned_skins.append(sk.skin.id)
+				rewards.append({"kind": "skin", "id": sk.skin.id, "text": sk.skin.name, "sub": t("NEUER SKIN für ") + sk.brawler.name, "color": Color(1, 0.5, 0.85)})
+	save_game()
+	return rewards
+
+func road_ready_count() -> int:
+	var n := 0
+	for i in ROAD.size():
+		if road_state(i) == "ready":
+			n += 1
+	return n
+
+# ------------------------------------------------------------------ Sprache
+## Übersetzung DE -> EN. Unbekannte Texte bleiben unverändert (Deutsch ist die Grundsprache).
+const EN := {
+	"Brawler": "Brawlers", "Shop": "Shop", "Einstellungen": "Settings", "SPIELEN": "PLAY", "Zurück": "Back",
+	"Trophäenpfad": "Trophy Road", "TROPHÄENPFAD": "TROPHY ROAD", "BRAWLER": "BRAWLERS", "SHOP": "SHOP",
+	"EINSTELLUNGEN": "SETTINGS", "SPIELMODUS": "GAME MODE", "Spielmodus": "Game mode",
+	"Training": "Training", "3v3 Teamkampf": "3v3 Team Battle", "Showdown": "Showdown",
+	"Teste deine Brawler an Puppen.\nKein Zeitlimit, keine Trophäen.": "Test your brawlers on dummies.\nNo time limit, no trophies.",
+	"Du + 2 Bots gegen 3 Bots.\nZuerst 10 K.O.s gewinnt (2:30 Minuten).": "You + 2 bots vs 3 bots.\nFirst to 10 KOs wins (2:30 minutes).",
+	"Jeder gegen jeden – 7 Brawler.\nKein Respawn. Der Letzte gewinnt!": "Free for all – 7 brawlers.\nNo respawn. Last one standing wins!",
+	"✔ AUSGEWÄHLT": "✔ SELECTED", "Auswählen": "Select", "Ausgewählt": "Selected",
+	"Münzen": "Coins", "Edelsteine": "Gems", "Trophäen": "Trophies",
+	"Soundeffekte": "Sound effects", "Code eingeben": "Enter code", "Einlösen": "Redeem", "Code": "Code",
+	"Bewegungs-Joystick folgt dem Finger": "Movement joystick follows finger", "Sprache": "Language",
+	"Ungültiger Code.": "Invalid code.", "OK": "OK", "Abbrechen": "Cancel", "Kaufen": "Buy", "Super!": "Great!",
+	"GRATIS-BOX": "FREE BOX", "BRAWL-BOX": "BRAWL BOX", "GROSSE BOX": "BIG BOX", "GROßE BOX": "BIG BOX", "MEGA-BOX": "MEGA BOX",
+	"Brawl-Box": "Brawl Box", "Große Box": "Big Box", "Mega-Box": "Mega Box", "Zufälliger Skin": "Random skin",
+	"Alle 4 Stunden kostenlos!": "Free every 4 hours!", "ABHOLEN": "CLAIM", "Abholen": "Claim", "Abgeholt": "Claimed", "Gesperrt": "Locked",
+	"BELOHNUNGEN": "REWARDS", "Tippe, um die Box zu öffnen!": "Tap to open the box!", "SKINS": "SKINS", "SKIN": "SKIN",
+	"Gesperrt – nur mit Glück aus Boxen!": "Locked – only from boxes with luck!", "GESPERRT\n(nur aus Boxen)": "LOCKED\n(boxes only)",
+	"Verlassen": "Leave", "TRAINING": "TRAINING", "3v3 TEAMKAMPF": "3v3 TEAM BATTLE", "SHOWDOWN": "SHOWDOWN",
+	"SIEG!": "VICTORY!", "NIEDERLAGE": "DEFEAT", "UNENTSCHIEDEN": "DRAW", "Weiter": "Continue",
+	"Belohnung": "Reward", "Training beendet": "Training finished", "Match verlassen": "Left match",
+	"Ohne Belohnung verlassen.": "Left without reward.", "Nicht verfügbar": "Not available",
+	"Dafür fehlt dir noch Währung.": "You don't have enough currency.", "Skin kaufen?": "Buy skin?", "Skin gekauft!": "Skin bought!",
+	"Standard": "Default", "AUSGERÜSTET": "EQUIPPED", "Besitzt du": "Owned", "Hoppla": "Oops",
+	"NEUER SKIN für ": "NEW SKIN for ", "Alle Skins schon im Besitz": "All skins already owned",
+	"Die Super lädt sich durch Schaden an Gegnern auf.": "Your super charges by damaging enemies.",
+	"Modus: ": "Mode: ", "Deutsch": "Deutsch", "English": "English",
+}
+## Wort-Ersetzungen für zusammengesetzte Texte (z.B. "Münzen: 500").
+const EN_WORDS := {
+	"Münzen": "Coins", "Edelsteine": "Gems", "Trophäen": "Trophies", "Belohnungen": "rewards", "Brawler-Chance": "Brawler chance",
+	"Leben": "Health", "Tempo": "Speed", "Munition": "Ammo", "Nachladen": "Reload", "ANGRIFF": "ATTACK", "Hiebe pro Munition": "Hits per ammo",
+	"Schaden pro Kombo": "Damage per combo", "Schaden pro Angriff": "Damage per attack", "Reichweite": "Range", "Schaden gesamt": "Total damage",
+	"Wiedereinstieg in": "Respawn in", "Übrig": "Left", "Blau": "Blue", "Rot": "Red", "Deine K.O.s": "Your KOs", "PLATZ": "RANK",
+	"Verursachter Schaden": "Damage dealt", "gesamt": "total", "Übrig gebliebene Gegner": "Enemies left", "Formen": "Forms",
+	"Kombo": "Combo", "Hieb(e) pro Munition": "hit(s) per ammo", "Angriff": "Attack", "Modus": "Mode", "NEUER BRAWLER!": "NEW BRAWLER!",
+	"Weiter": "Next", "Noch": "Tap", "x tippen!": "more times!", "für": "for", "in ": "in ",
+}
+
+func t(text: String) -> String:
+	if data.get("lang", "de") != "en" or text == "":
+		return text
+	if EN.has(text):
+		return EN[text]
+	var out := text
+	for w in EN_WORDS:
+		out = out.replace(w, EN_WORDS[w])
+	return out
+
 # ------------------------------------------------------------------ Währung
 ## Unendliche Ressourcen (Code 67): Käufe kosten nichts.
 func is_infinite() -> bool:
@@ -118,8 +234,8 @@ func spend(currency: String, amount: int) -> void:
 
 func currency_text() -> String:
 	if is_infinite():
-		return "Münzen: ∞    Edelsteine: ∞"
-	return "Münzen: %d    Edelsteine: %d" % [data.coins, data.gems]
+		return t("Münzen") + ": ∞    " + t("Edelsteine") + ": ∞"
+	return "%s: %d    %s: %d" % [t("Münzen"), data.coins, t("Edelsteine"), data.gems]
 
 # ------------------------------------------------------------------ Skins
 func get_skin(b: Dictionary, skin_id: String) -> Dictionary:
@@ -183,9 +299,11 @@ func free_box_wait_text() -> String:
 	return "%dh %02dm" % [left / 3600, (left % 3600) / 60]
 
 ## Öffnet eine Box. Rückgabe: Liste von Belohnungen {kind, text, color, amount, id}.
-func open_box(type: String, free := false) -> Array:
+func open_box(type: String, free := false, gift := false) -> Array:
 	var bx: Dictionary = BOXES[type]
-	if free:
+	if gift:
+		pass  # Geschenk (z.B. Trophäenpfad): kostet nichts
+	elif free:
 		if not free_box_ready():
 			return []
 		data.last_free_box = Time.get_unix_time_from_system()
@@ -247,6 +365,25 @@ func _roll_skin() -> Dictionary:
 			if not owns_skin(sk.id):
 				pool.append({"brawler": b, "skin": sk})
 	return pool[randi() % pool.size()] if pool.size() > 0 else {}
+
+## Belohnungen für Teamkampf/Showdown (Trophäen + Münzen).
+func award_match(res: Dictionary) -> Dictionary:
+	var tr := 0
+	var coins := 0
+	if res.mode == "team":
+		tr = {"victory": 8, "draw": 0, "defeat": -4}[res.outcome]
+		coins = {"victory": 30, "draw": 15, "defeat": 10}[res.outcome]
+	else:
+		var table := [10, 7, 4, 1, -2, -4, -6]
+		tr = table[clamp(res.rank - 1, 0, table.size() - 1)]
+		coins = max(5, 35 - (res.rank - 1) * 5)
+	coins += res.kills * 3
+	var total: int = int(data.get("trophies", 0))
+	tr = max(tr, -total)
+	data.trophies = total + tr
+	data.coins += coins
+	save_game()
+	return {"trophies": tr, "coins": coins}
 
 ## Münzen für das Training (nach Schaden), max. 60 pro Runde.
 func award_training(damage: float) -> int:
@@ -326,7 +463,7 @@ func style(color: Color, radius := 22, border := 5) -> StyleBoxFlat:
 
 func make_button(text: String, color: Color, size := Vector2(300, 90), font_size := 30) -> Button:
 	var b := Button.new()
-	b.text = text
+	b.text = t(text)
 	b.custom_minimum_size = size
 	b.add_theme_stylebox_override("normal", style(color))
 	b.add_theme_stylebox_override("hover", style(color.lightened(0.1)))
@@ -342,7 +479,7 @@ func make_button(text: String, color: Color, size := Vector2(300, 90), font_size
 
 func make_label(text: String, font_size := 28, color := Color.WHITE, outline := 8) -> Label:
 	var l := Label.new()
-	l.text = text
+	l.text = t(text)
 	l.add_theme_font_size_override("font_size", font_size)
 	l.add_theme_color_override("font_color", color)
 	l.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.1))

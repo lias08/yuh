@@ -9,6 +9,18 @@ const ARENA_H := 26.0
 
 var player: Fighter
 var dummies: Array = []
+var fighters: Array = []      # alle Brawler (Spieler + Bots)
+var bots := {}                # Fighter-ID -> BotAI
+var mode := "training"        # training | team | showdown
+var score := [0, 0]
+var time_left := 150.0
+var finished := false
+var result := {}
+var respawns := {}            # Fighter-ID -> verbleibende Zeit
+var feed: Array = []
+var feed_label: Label
+var score_label: Label
+const TEAM_TARGET := 10
 var waves: Array = []
 var enemy_shots: Array = []
 var walls: Array = []        # Rect2 in der XZ-Ebene (Kollision)
@@ -70,15 +82,26 @@ class JoyDraw extends Control:
 func _ready() -> void:
 	_build_environment()
 	_build_arena()
-	player = Fighter.new()
-	add_child(player)
-	player.setup(Game.selected_brawler(), self)
-	player.position = Vector3(0, 0, 8)
+	mode = Game.data.get("mode", "training")
+	player = _spawn_fighter(Game.selected_brawler(), 0, false, Game.data.get("player_name", "Du"))
 	player.transformed.connect(_on_transformed)
-	_spawn_dummy(Vector3(-4, 0, -4), "static")
-	_spawn_dummy(Vector3(0, 0, -6), "walker")
-	_spawn_dummy(Vector3(4, 0, -4), "shooter")
-	_spawn_dummy(Vector3(0, 0, -1), "static")
+	match mode:
+		"team":
+			for i in 2:
+				_spawn_fighter(_random_brawler(), 0, true, ["Kiko", "Brummi", "Sunny", "Zapp"][randi() % 4] + " (Bot)")
+			for i in 3:
+				_spawn_fighter(_random_brawler(), 1, true, ["Grimm", "Vex", "Schnapper", "Rocco", "Mira", "Blitz"][randi() % 6])
+		"showdown":
+			var names := ["Grimm", "Vex", "Schnapper", "Rocco", "Mira", "Blitz"]
+			for i in 6:
+				_spawn_fighter(_random_brawler(), i + 1, true, names[i])
+		_:
+			_spawn_dummy(Vector3(-4, 0, -4), "static")
+			_spawn_dummy(Vector3(0, 0, -6), "walker")
+			_spawn_dummy(Vector3(4, 0, -4), "shooter")
+			_spawn_dummy(Vector3(0, 0, -1), "static")
+	for f in fighters:
+		f.position = _spawn_point(f)
 	aim_mesh = MeshInstance3D.new()
 	aim_mesh.material_override = _aim_mat()
 	aim_mesh.visible = false
@@ -242,6 +265,61 @@ func _block_at(p: Vector3) -> Dictionary:
 static func fx_of(spec: Dictionary) -> Dictionary:
 	return {"stun": spec.get("stun", 0.0), "slow": spec.get("slow", 0.0), "knock": spec.get("knock", 0.0)}
 
+# ==================================================================== Brawler & Teams
+func _spawn_fighter(b: Dictionary, team: int, bot: bool, name: String) -> Fighter:
+	var f := Fighter.new()
+	f.team = team
+	f.is_bot = bot
+	f.display_name = name
+	add_child(f)
+	f.setup(b, self)
+	f.proxy = {"fighter": f, "pos": f.position, "radius": 0.5}
+	fighters.append(f)
+	if bot:
+		bots[f.get_instance_id()] = BotAI.new(randf_range(0.45, 0.75))
+	return f
+
+func _random_brawler() -> Dictionary:
+	return Game.brawlers[randi() % Game.brawlers.size()]
+
+func _spawn_point(f: Fighter) -> Vector3:
+	if mode == "showdown":
+		var i: int = fighters.find(f)
+		var a: float = TAU * i / max(1, fighters.size()) + PI / 2.0
+		return resolve_circle(Vector3(cos(a) * 8.0, 0, sin(a) * 10.0), 0.5)
+	var same: Array = fighters.filter(func(x): return x.team == f.team)
+	var idx: int = same.find(f)
+	var z: float = 10.5 if f.team == 0 else -11.0
+	return resolve_circle(Vector3((idx - (same.size() - 1) / 2.0) * 3.0, 0, z), 0.5)
+
+func is_enemy(a: Fighter, b: Fighter) -> bool:
+	return a.team != b.team
+
+## Alle Ziele, die ein Brawler treffen kann (gegnerische Brawler und – im Training – Puppen).
+func _targets(f: Fighter) -> Array:
+	var list: Array = []
+	if f == null or f.team == 0:
+		list.append_array(dummies)
+	for o in fighters:
+		if o != f and o.alive and (f == null or is_enemy(f, o)):
+			o.proxy.pos = o.position
+			list.append(o.proxy)
+	return list
+
+func nearest_enemy(f: Fighter):
+	var best = null
+	var bd := 1e9
+	for t in _targets(f):
+		var d: float = (t.pos - f.position).length()
+		if d < bd:
+			bd = d
+			best = t
+	return best
+
+func super_range(f: Fighter) -> float:
+	var s: Dictionary = f.form().super
+	return s.get("range", 8.0)
+
 func _spawn_dummy(pos: Vector3, kind: String) -> void:
 	var color := Color(1, 0.3, 0.3) if kind != "shooter" else Color(0.3, 0.5, 1.0)
 	if kind == "walker":
@@ -302,7 +380,7 @@ func blocked(p: Vector3) -> bool:
 func melee_swing(f: Fighter, step: Dictionary) -> void:
 	var origin := f.position
 	var hits := 0
-	for d in dummies:
+	for d in _targets(f):
 		var to: Vector3 = d.pos - origin
 		to.y = 0
 		var dist := to.length()
@@ -453,7 +531,7 @@ func _update_dashes(delta: float) -> void:
 		f.dash_move(d.dir * step)
 		d.left -= step
 		_burst(f.position + Vector3(0, 0.3, 0), Color(0.9, 0.85, 0.7), 2, 1.5, 0.12)
-		for dm in dummies:
+		for dm in _targets(f):
 			if dm in d.hit:
 				continue
 			if (dm.pos - f.position).length() < 1.2:
@@ -503,7 +581,7 @@ func use_gadget(f: Fighter, g: Dictionary) -> void:
 			sh.position = Vector3(0, 1.0, 0)
 			fx.append({"node": sh, "t": 0.0, "dur": g.get("duration", 3.0), "kind": "particles"})
 		"stun_pulse":
-			for d in dummies:
+			for d in _targets(f):
 				if (d.pos - f.position).length() <= g.get("range", 4.0):
 					_damage_dummy(d, g.get("dmg", 400.0), f, {"stun": g.get("stun", 1.5)}, f.position)
 			_ring_fx(f.position, g.get("range", 4.0), c, 0.4)
@@ -530,6 +608,9 @@ func charge_effect(f: Fighter, sup: Dictionary) -> void:
 	_shake = 0.2
 
 func _damage_dummy(d: Dictionary, amount: float, f: Fighter, efx: Dictionary = {}, from := Vector3.INF) -> void:
+	if d.has("fighter"):
+		_damage_fighter(d.fighter, amount, f, efx, from)
+		return
 	var now := Time.get_ticks_msec() / 1000.0
 	if efx.get("stun", 0.0) > 0.0:
 		var first: bool = d.stun_until < now
@@ -556,8 +637,107 @@ func _damage_dummy(d: Dictionary, amount: float, f: Fighter, efx: Dictionary = {
 		d.hp = d.max
 		_burst(d.pos + Vector3(0, 0.9, 0), Color(1, 0.8, 0.3), 30, 6.0, 0.18)
 
+func _damage_fighter(v: Fighter, amount: float, f: Fighter, efx: Dictionary, from: Vector3) -> void:
+	if not v.alive or finished:
+		return
+	var was_stunned := v.stunned()
+	v.apply_status(efx, from)
+	if v.stunned() and not was_stunned:
+		_damage_number(v.position + Vector3(0, 3.0, 0), -1, Color(1, 0.9, 0.3))
+	v.take_damage(amount)
+	total_damage += amount if f == player else 0.0
+	if f != null:
+		f.damage_dealt += amount
+		f.add_charge(amount)
+	_damage_number(v.position + Vector3(0, 2.6, 0), amount, Color(1, 0.4, 0.4) if v == player else Color.WHITE)
+	_burst(v.position + Vector3(0, 1.0, 0), Color(1, 0.95, 0.7), 8, 4.0, 0.1)
+	if v == player:
+		Game.play_sfx("hurt", 0.5)
+		_shake = max(_shake, 0.15)
+	if not v.alive:
+		_on_fighter_died(v, f)
+
+func _on_fighter_died(v: Fighter, killer: Fighter) -> void:
+	v.deaths += 1
+	_burst(v.position + Vector3(0, 0.9, 0), Color.WHITE, 30, 6.0, 0.25)
+	_ring_fx(v.position, 2.0, Color(1, 0.5, 0.4), 0.4)
+	Game.play_sfx("explosion", 0.6, 1.3)
+	if killer != null and killer != v:
+		killer.kills += 1
+	_add_feed(("%s besiegt %s" % [killer.display_name, v.display_name]) if killer != null else ("%s wurde besiegt" % v.display_name))
+	match mode:
+		"team":
+			if killer != null:
+				score[killer.team] += 1
+			respawns[v.get_instance_id()] = 3.0
+			if score[0] >= TEAM_TARGET or score[1] >= TEAM_TARGET:
+				_finish_team()
+		"showdown":
+			var alive: Array = fighters.filter(func(x): return x.alive)
+			if v == player:
+				_finish("defeat", alive.size() + 1)
+			elif alive.size() == 1 and alive[0] == player:
+				_finish("victory", 1)
+		_:
+			respawns[v.get_instance_id()] = 2.0
+
+func _add_feed(text: String) -> void:
+	feed.push_front(text)
+	if feed.size() > 4:
+		feed.pop_back()
+
+func _finish_team() -> void:
+	if score[0] > score[1]:
+		_finish("victory", 0)
+	elif score[0] < score[1]:
+		_finish("defeat", 0)
+	else:
+		_finish("draw", 0)
+
+## Matchende: Ergebnis-Bildschirm mit Belohnungen.
+func _finish(outcome: String, rank: int) -> void:
+	if finished:
+		return
+	finished = true
+	result = {"mode": mode, "outcome": outcome, "rank": rank, "kills": player.kills, "score": score.duplicate()}
+	Game.play_sfx("transform" if outcome == "victory" else "hurt", 1.0, 1.0 if outcome == "victory" else 0.6)
+	var layer := CanvasLayer.new()
+	layer.layer = 25
+	add_child(layer)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.55)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(dim)
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(center)
+	var col: Color = {"victory": Color(1, 0.75, 0.1), "defeat": Color(0.8, 0.2, 0.25), "draw": Color(0.5, 0.5, 0.6)}[outcome]
+	var panel := Game.make_panel(col.darkened(0.35))
+	center.add_child(panel)
+	var vb := VBoxContainer.new()
+	vb.alignment = BoxContainer.ALIGNMENT_CENTER
+	vb.add_theme_constant_override("separation", 14)
+	vb.custom_minimum_size = Vector2(560, 300)
+	panel.add_child(vb)
+	var title: String = {"victory": "SIEG!", "defeat": "NIEDERLAGE", "draw": "UNENTSCHIEDEN"}[outcome]
+	if mode == "showdown":
+		title = "PLATZ %d" % rank + ("!" if rank == 1 else "")
+	var t := Game.make_label(title, 64, Color.WHITE, 14)
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vb.add_child(t)
+	var detail: String = "Blau %d : %d Rot" % [score[0], score[1]] if mode == "team" else "Übrig gebliebene Gegner: %d" % (rank - 1 if rank > 1 else 0)
+	var d := Game.make_label(detail + "\nDeine K.O.s: %d" % player.kills, 28, Color.WHITE, 8)
+	d.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vb.add_child(d)
+	var ok := Game.make_button("Weiter", Color(0.3, 0.8, 0.35), Vector2(260, 90), 32)
+	ok.pressed.connect(func(): emit_signal("exit_requested"))
+	vb.add_child(ok)
+	panel.scale = Vector2(0.5, 0.5)
+	panel.pivot_offset = Vector2(300, 170)
+	panel.create_tween().tween_property(panel, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
 func _explode(pos: Vector3, radius: float, dmg: float, color: Color, f: Fighter, efx: Dictionary = {}, breaks := false) -> void:
-	for d in dummies:
+	for d in _targets(f):
 		var to: Vector3 = d.pos - pos
 		to.y = 0
 		if to.length() <= radius + d.radius:
@@ -580,12 +760,32 @@ func _process(delta: float) -> void:
 		float(Input.is_key_pressed(KEY_S)) - float(Input.is_key_pressed(KEY_W)))
 	if kb.length() > 0.0:
 		input = kb.normalized()
-	if player.alive:
-		player.update_movement(input, delta)
-	else:
-		_respawn_t -= delta
-		if _respawn_t <= 0.0:
-			player.respawn(Vector3(0, 0, 8))
+	if finished:
+		input = Vector2.ZERO
+	for f in fighters:
+		if not f.alive:
+			continue
+		if f == player:
+			f.update_movement(input, delta)
+		elif not finished:
+			f.update_movement(bots[f.get_instance_id()].think(f, self, delta), delta)
+		else:
+			f.update_movement(Vector2.ZERO, delta)
+	# Respawns
+	for f in fighters:
+		var id: int = f.get_instance_id()
+		if respawns.has(id):
+			respawns[id] -= delta
+			if respawns[id] <= 0.0:
+				respawns.erase(id)
+				if not finished:
+					f.respawn(_spawn_point(f))
+					_ring_fx(f.position, 1.5, Color(0.5, 0.9, 1.0), 0.4)
+	# Zeitlimit Teamkampf
+	if mode == "team" and not finished:
+		time_left -= delta
+		if time_left <= 0.0:
+			_finish_team()
 	_update_dummies(delta)
 	_update_waves(delta)
 	_update_lobs(delta)
@@ -611,7 +811,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 func auto_aim(max_range: float) -> Vector3:
 	var best = null
 	var bd := max_range
-	for d in dummies:
+	for d in _targets(player):
 		var dist: float = (d.pos - player.position).length()
 		if dist < bd:
 			bd = dist
@@ -692,7 +892,7 @@ func _update_waves(delta: float) -> void:
 				if w.explode > 0.0:
 					_explode(node.position, w.explode, w.dmg * 0.5, w.color, w.owner, w.fx, w.breaks)
 		else:
-			for d in dummies:
+			for d in _targets(w.owner):
 				if d in w.hit:
 					continue
 				var to: Vector3 = d.pos - nxt
@@ -745,13 +945,8 @@ func _update_enemy_shots(delta: float) -> void:
 			var to := player.position - node.position
 			to.y = 0
 			if to.length() < player.radius + 0.25:
-				player.take_damage(300.0)
-				_damage_number(player.position + Vector3(0, 2.1, 0), 300, Color(1, 0.4, 0.4))
-				Game.play_sfx("hurt", 0.6)
+				_damage_fighter(player, 300.0, null, {}, Vector3.INF)
 				done = true
-				if not player.alive:
-					_respawn_t = 2.0
-					_burst(player.position + Vector3(0, 0.8, 0), Color.WHITE, 30, 5.0, 0.2)
 		if done:
 			node.queue_free()
 			enemy_shots.remove_at(i)
@@ -1184,7 +1379,7 @@ func _build_hud() -> void:
 	var vb := VBoxContainer.new()
 	vb.alignment = BoxContainer.ALIGNMENT_CENTER
 	top.add_child(vb)
-	var title := Game.make_label("TRAINING", 30, Color(1, 0.85, 0.2))
+	var title := Game.make_label({"team": "3v3 TEAMKAMPF", "showdown": "SHOWDOWN"}.get(mode, "TRAINING"), 30, Color(1, 0.85, 0.2))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vb.add_child(title)
 	form_label = Game.make_label("", 22)
@@ -1199,6 +1394,15 @@ func _build_hud() -> void:
 		dots.add_child(p)
 		evo_dots.append(p)
 
+	score_label = Game.make_label("", 34, Color.WHITE, 10)
+	score_label.position = Vector2(20, 230)
+	hud_root.add_child(score_label)
+	feed_label = Game.make_label("", 20, Color(1, 0.9, 0.8), 6)
+	feed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	feed_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	feed_label.position = Vector2(-520, 150)
+	feed_label.size = Vector2(500, 140)
+	hud_root.add_child(feed_label)
 	info_label = Game.make_label("", 20, Color(1, 1, 1, 0.9), 6)
 	info_label.position = Vector2(20, 110)
 	hud_root.add_child(info_label)
@@ -1277,7 +1481,7 @@ func _release(t: Dictionary) -> void:
 ## Wurfweite beim Antippen: Entfernung zur nächsten Puppe.
 func _auto_frac(rng: float) -> float:
 	var best := rng
-	for d in dummies:
+	for d in _targets(player):
 		best = min(best, (d.pos - player.position).length())
 	return clamp(best / rng, 0.25, 1.0)
 
@@ -1322,25 +1526,44 @@ func _update_hud(delta: float) -> void:
 		evo_dots[i].add_theme_stylebox_override("panel", st)
 	var hits_text: String = ("Kombo: %d Hieb(e) pro Munition" % f.combo.size()) if f.has("combo") else ("Angriff: " + f.combo_name)
 	info_label.text = "%s\nSchaden gesamt: %d\nSuper: %d%%" % [hits_text, int(total_damage), int(player.super_charge * 100)]
+	_set_score_text()
+	feed_label.text = "\n".join(feed)
 	banner_t += delta
 	banner.modulate.a = clamp(1.6 - banner_t, 0.0, 1.0)
 	banner.scale = Vector2.ONE * lerp(1.5, 1.0, clamp(banner_t / 0.2, 0.0, 1.0))
 	banner.pivot_offset = banner.size / 2.0
 	_update_bars()
 
+func _set_score_text() -> void:
+	match mode:
+		"team":
+			score_label.text = "Blau %d : %d Rot\n%d:%02d" % [score[0], score[1], int(time_left) / 60, int(time_left) % 60]
+		"showdown":
+			score_label.text = "Übrig: %d" % fighters.filter(func(x): return x.alive).size()
+		_:
+			score_label.text = ""
+	if not player.alive and respawns.has(player.get_instance_id()):
+		score_label.text += "\nWiedereinstieg in %d" % (int(respawns[player.get_instance_id()]) + 1)
+	score_label.text = Game.t(score_label.text)
+
 func show_banner(text: String) -> void:
 	banner.text = text
 	banner_t = 0.0
 
 func _update_bars() -> void:
-	var list: Array = [player]
+	var list: Array = fighters.duplicate()
 	list.append_array(dummies)
 	for o in list:
-		var is_player := o is Fighter
+		var is_player := o is Fighter   # Brawler (Spieler oder Bot) vs. Puppe
 		var key: int = o.get_instance_id() if is_player else o.node.get_instance_id()
 		var bar: Control
 		if not bars.has(key):
-			bar = _make_bar(is_player, o.name if not is_player else Game.data.get("player_name", "Du"))
+			var col := Color(1, 0.45, 0.45)
+			if is_player and o == player:
+				col = Color(0.4, 1, 0.45)
+			elif is_player and o.team == player.team:
+				col = Color(0.4, 0.7, 1.0)
+			bar = _make_bar(is_player and o == player, o.display_name if is_player else o.name, col)
 			bars[key] = bar
 		bar = bars[key]
 		var wpos: Vector3 = (o.position if is_player else o.pos) + Vector3(0, 2.55, 0)
@@ -1354,19 +1577,19 @@ func _update_bars() -> void:
 		var fill: ColorRect = bar.get_node("Fill")
 		fill.size.x = 152.0 * clamp(hp / mx, 0.0, 1.0)
 		(bar.get_node("HP") as Label).text = str(int(hp))
-		if is_player:
+		if is_player and o == player:
 			for i in 3:
 				var a: ColorRect = bar.get_node("Ammo%d" % i)
 				var amt: float = clamp(player.ammo - i, 0.0, 1.0)
 				a.size.x = 48.0 * amt
 				a.color = Color(1, 0.6, 0.2) if amt >= 1.0 else Color(1, 0.6, 0.2, 0.55)
 
-func _make_bar(is_player: bool, title: String) -> Control:
+func _make_bar(is_player: bool, title: String, col := Color(1, 0.45, 0.45)) -> Control:
 	var c := Control.new()
 	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud_root.add_child(c)
 	hud_root.move_child(c, 0)
-	var name_l := Game.make_label(title, 18, Color(0.4, 1, 0.45) if is_player else Color(1, 0.45, 0.45), 6)
+	var name_l := Game.make_label(title, 18, col, 6)
 	name_l.position = Vector2(0, -26)
 	name_l.size = Vector2(160, 24)
 	name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1377,7 +1600,7 @@ func _make_bar(is_player: bool, title: String) -> Control:
 	c.add_child(bg)
 	var fill := ColorRect.new()
 	fill.name = "Fill"
-	fill.color = Color(0.4, 1, 0.45) if is_player else Color(1, 0.35, 0.35)
+	fill.color = col
 	fill.position = Vector2(4, 4)
 	fill.size = Vector2(152, 18)
 	c.add_child(fill)
