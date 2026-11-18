@@ -231,15 +231,33 @@ static func build(look: Dictionary) -> Dictionary:
 	part(body, "box", Vector3(-0.07, 0.86, -0.27), Vector3(0.2, 0.06, 0.05), trim, Vector3(0, 0, 55), false)
 	part(body, "box", Vector3(0.07, 0.86, -0.27), Vector3(0.2, 0.06, 0.05), trim, Vector3(0, 0, -55), false)
 	part(body, "box", Vector3(0.0, 0.73, -0.29), Vector3(0.12, 0.2, 0.04), skin, Vector3.ZERO, false)
-	var shoulder_l := pivot(body, "ShoulderL", Vector3(-0.32, 0.86, 0))
-	var shoulder_r := pivot(body, "ShoulderR", Vector3(0.32, 0.86, 0))
-	part(shoulder_l, "sphere", Vector3.ZERO, Vector3.ONE * 0.24, robe)
-	part(shoulder_r, "sphere", Vector3.ZERO, Vector3.ONE * 0.24, robe)
+	# Körperbau (Silhouette): normal, slim, round, buff, tiny, tall
+	var bt: String = look.get("body", "normal")
+	var bw: float = {"slim": 0.8, "round": 1.25, "buff": 1.18, "tiny": 0.88, "tall": 0.92}.get(bt, 1.0)
+	var bh: float = {"slim": 1.05, "round": 0.95, "buff": 1.05, "tiny": 0.82, "tall": 1.18}.get(bt, 1.0)
+	var hs: float = {"slim": 0.95, "round": 1.0, "buff": 0.9, "tiny": 1.15, "tall": 0.92}.get(bt, 1.0)
+	for c in body.get_children():
+		if c is MeshInstance3D:
+			c.scale.x *= bw
+			c.scale.z *= bw
+			c.scale.y *= bh
+			c.position.x *= bw
+			c.position.y *= bh
+			c.position.z *= bw
+	if bt == "round":
+		part(body, "sphere", Vector3(0, 0.6 * bh, -0.12), Vector3(0.82, 0.62, 0.62), robe.lightened(0.05))
+	var sh := 0.86 * bh
+	var shoulder_l := pivot(body, "ShoulderL", Vector3(-0.32 * bw, sh, 0))
+	var shoulder_r := pivot(body, "ShoulderR", Vector3(0.32 * bw, sh, 0))
+	var sz: float = 0.32 if bt == "buff" else 0.24
+	part(shoulder_l, "sphere", Vector3.ZERO, Vector3.ONE * sz, robe)
+	part(shoulder_r, "sphere", Vector3.ZERO, Vector3.ONE * sz, robe)
 	var hip_l := pivot(body, "HipL", Vector3(-0.15, 0.3, 0))
 	var hip_r := pivot(body, "HipR", Vector3(0.15, 0.3, 0))
 
 	# ---- Kopf (groß, Chibi-Proportionen)
-	var head := pivot(body, "Head", Vector3(0, 1.38, 0))
+	var head := pivot(body, "Head", Vector3(0, 1.38 * bh + (hs - 1.0) * 0.3, 0))
+	head.scale = Vector3.ONE * hs
 	part(head, "sphere", Vector3.ZERO, Vector3(0.9, 0.84, 0.84), skin)
 	part(head, "sphere", Vector3(-0.44, -0.02, 0.0), Vector3(0.12, 0.18, 0.1), skin)
 	part(head, "sphere", Vector3(0.44, -0.02, 0.0), Vector3(0.12, 0.18, 0.1), skin)
@@ -256,10 +274,11 @@ static func build(look: Dictionary) -> Dictionary:
 		part(cape, "box", Vector3(0, -0.42, 0.06), Vector3(0.58, 0.82, 0.02), robe.lightened(0.1), Vector3(-6, 0, 0), false)
 
 	# ---- Hände (Handschuhe) + Waffe
+	var hand_sz: float = 0.3 if bt == "buff" else 0.22
 	var hand_l := pivot(root, "HandL", Vector3(-0.5, 0.62, -0.08))
-	part(hand_l, "sphere", Vector3.ZERO, Vector3.ONE * 0.22, skin)
+	part(hand_l, "sphere", Vector3.ZERO, Vector3.ONE * hand_sz, skin)
 	var hand_r := pivot(root, "HandR", Vector3(0.5, 0.62, -0.08))
-	part(hand_r, "sphere", Vector3.ZERO, Vector3.ONE * 0.22, skin)
+	part(hand_r, "sphere", Vector3.ZERO, Vector3.ONE * hand_sz, skin)
 	var weapon := pivot(hand_r, "Weapon", Vector3.ZERO)
 	var tip := _weapon(weapon, look, dark)
 
@@ -281,7 +300,7 @@ static func build(look: Dictionary) -> Dictionary:
 		"weapon": weapon, "foot_l": foot_l, "foot_r": foot_r, "cape": cape, "tip": tip, "height": 1.95,
 		"shoulder_l": shoulder_l, "shoulder_r": shoulder_r, "hip_l": hip_l, "hip_r": hip_r,
 		"arm_l": arm_l, "arm_r": arm_r, "leg_l": leg_l, "leg_r": leg_r}
-	rig["height"] = 1.95 * size
+	rig["height"] = 1.95 * size * bh
 	merge_tree(root)
 	return rig
 

@@ -129,6 +129,104 @@ func _show_form(i: int) -> void:
 	stage_rig.root.rotation.y = PI
 	stage_model.add_child(stage_rig.root)
 
+# ==================================================================== Porträts (Brawler-Bilder)
+# Jeder Brawler wird einmal in ein Bild gerendert (Kopf & Oberkörper) und für die Karten wiederverwendet.
+var _portraits := {}          # Schlüssel -> ImageTexture
+var _portrait_wait := {}      # Schlüssel -> [TextureRect]
+var _portrait_queue: Array = []
+var _portrait_busy := false
+var _pv: SubViewport
+var _pv_model: Node3D
+
+func portrait_key(b: Dictionary) -> String:
+	return "%s|%s" % [b.id, Game.data.equipped.get(b.id, "")]
+
+## Bild in ein TextureRect setzen (sofort aus dem Cache oder sobald es gerendert ist).
+func request_portrait(b: Dictionary, target: TextureRect) -> void:
+	var key := portrait_key(b)
+	if _portraits.has(key):
+		target.texture = _portraits[key]
+		return
+	if not _portrait_wait.has(key):
+		_portrait_wait[key] = []
+		_portrait_queue.append(b)
+	_portrait_wait[key].append(target)
+	if not _portrait_busy:
+		_render_portraits()
+
+func _ensure_portrait_viewport() -> void:
+	if _pv != null:
+		return
+	_pv = SubViewport.new()
+	_pv.own_world_3d = true
+	_pv.transparent_bg = true
+	_pv.size = Vector2i(200, 200)
+	_pv.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	add_child(_pv)
+	var env := WorldEnvironment.new()
+	var e := Environment.new()
+	e.background_mode = Environment.BG_CLEAR_COLOR
+	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	e.ambient_light_color = Color(0.85, 0.85, 1.0)
+	e.ambient_light_energy = 0.4
+	env.environment = e
+	_pv.add_child(env)
+	var light := DirectionalLight3D.new()
+	light.rotation_degrees = Vector3(-35, 25, 0)
+	light.light_energy = 0.85
+	_pv.add_child(light)
+	var cam := Camera3D.new()
+	cam.fov = 30
+	_pv.add_child(cam)
+	cam.position = Vector3(0, 1.55, 3.6)
+	cam.look_at(Vector3(0, 1.15, 0))
+	_pv_model = Node3D.new()
+	_pv.add_child(_pv_model)
+
+func _render_portraits() -> void:
+	_portrait_busy = true
+	_ensure_portrait_viewport()
+	while not _portrait_queue.is_empty():
+		var b: Dictionary = _portrait_queue.pop_front()
+		var key := portrait_key(b)
+		for c in _pv_model.get_children():
+			c.queue_free()
+		var rig := ModelBuilder.build(Game.look_for(b, 0))
+		var size: float = rig.root.scale.x
+		rig.root.rotation.y = PI - 0.35
+		# große Figuren etwas kleiner, damit Kopf und Oberkörper ins Bild passen
+		rig.root.scale = Vector3.ONE * clamp(1.0 / size, 0.8, 1.15) * size
+		_pv_model.add_child(rig.root)
+		ModelBuilder.update_limbs(rig)
+		_pv.render_target_update_mode = SubViewport.UPDATE_ONCE
+		await RenderingServer.frame_post_draw
+		await get_tree().process_frame
+		_pv.render_target_update_mode = SubViewport.UPDATE_ONCE
+		await RenderingServer.frame_post_draw
+		var img: Image = _pv.get_texture().get_image()
+		if img != null and not img.is_empty():
+			var tex := ImageTexture.create_from_image(img)
+			_portraits[key] = tex
+			for t in _portrait_wait.get(key, []):
+				if is_instance_valid(t):
+					t.texture = tex
+		_portrait_wait.erase(key)
+	_portrait_busy = false
+
+## Kleiner Pokal (gezeichnet, damit kein Emoji-Font nötig ist).
+class TrophyIcon extends Control:
+	func _draw() -> void:
+		var w := size.x
+		var h := size.y
+		var gold := Color(1.0, 0.8, 0.2)
+		var dark := Color(0.45, 0.28, 0.05)
+		draw_rect(Rect2(w * 0.2, h * 0.08, w * 0.6, h * 0.45), gold)
+		draw_circle(Vector2(w * 0.5, h * 0.5), w * 0.3, gold)
+		draw_arc(Vector2(w * 0.18, h * 0.3), w * 0.14, PI * 0.5, PI * 1.5, 8, gold, 2.0)
+		draw_arc(Vector2(w * 0.82, h * 0.3), w * 0.14, -PI * 0.5, PI * 0.5, 8, gold, 2.0)
+		draw_rect(Rect2(w * 0.43, h * 0.6, w * 0.14, h * 0.2), gold)
+		draw_rect(Rect2(w * 0.25, h * 0.8, w * 0.5, h * 0.14), dark)
+
 # ==================================================================== Wisch-Scrollen
 # Listen lassen sich überall mit dem Finger verschieben (auch über Knöpfen), nicht nur an der Leiste.
 # Wer wischt, löst dabei keinen Knopf aus. Nach dem Loslassen gleitet die Liste etwas nach.
@@ -379,39 +477,79 @@ func show_brawlers() -> void:
 	_place(scroll, Vector2(0, 0), Vector2(20, 140))
 	var grid := GridContainer.new()
 	grid.columns = 6
-	grid.add_theme_constant_override("h_separation", 12)
-	grid.add_theme_constant_override("v_separation", 12)
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
 	scroll.add_child(grid)
 	# Nach Seltenheit sortiert (seltenste zuerst), innerhalb gleich wie in den Daten
 	var order := ["Hyperlegendär", "Legendär", "Mythisch", "Episch", "Super Selten", "Selten"]
 	var list: Array = Game.brawlers.duplicate()
 	list.sort_custom(func(a, b2): return order.find(a.rarity) < order.find(b2.rarity))
 	for b in list:
-		var unlocked := Game.is_unlocked(b.id)
-		var card := Game.make_button("", b.rarity_color.darkened(0.35) if unlocked else Color(0.3, 0.3, 0.36), Vector2(195, 150))
-		var vb := VBoxContainer.new()
-		vb.alignment = BoxContainer.ALIGNMENT_CENTER
-		vb.set_anchors_preset(Control.PRESET_FULL_RECT)
-		vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		card.add_child(vb)
-		var n := Game.make_label(b.name.to_upper(), 22, Color.WHITE if unlocked else Color(0.7, 0.7, 0.75))
-		n.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		n.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		vb.add_child(n)
-		var r := Game.make_label(b.rarity, 17, b.rarity_color.lightened(0.2))
-		r.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		r.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		vb.add_child(r)
-		var sub: String = b.role if unlocked else "GESPERRT"
+		grid.add_child(_brawler_card(b))
+
+## Brawler-Karte: Bild auf Seltenheitsfarbe, Name klein unten rechts, Rang + Trophäen oben.
+func _brawler_card(b: Dictionary) -> Control:
+	var unlocked := Game.is_unlocked(b.id)
+	var bg: Color = b.rarity_color if unlocked else Color(0.32, 0.32, 0.38)
+	var card := Game.make_button("", bg.darkened(0.15), Vector2(192, 200))
+	var pic := TextureRect.new()
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	pic.set_anchors_preset(Control.PRESET_FULL_RECT)
+	pic.offset_left = 8; pic.offset_top = 8; pic.offset_right = -8; pic.offset_bottom = -8
+	pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if not unlocked:
+		pic.modulate = Color(0.15, 0.15, 0.2, 0.9)  # Silhouette
+	card.add_child(pic)
+	request_portrait(b, pic)
+	var name_l := Game.make_label(b.name.to_upper(), 17, Color.WHITE, 5)
+	name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	name_l.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	name_l.offset_left = -184; name_l.offset_top = -34; name_l.offset_right = -10; name_l.offset_bottom = -8
+	name_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(name_l)
+	if unlocked:
+		var tr: int = Game.brawler_trophies(b.id)
+		var rank: int = Game.rank_of(tr)
+		var badge := Panel.new()
+		var st := StyleBoxFlat.new()
+		st.bg_color = Game.rank_color(rank)
+		st.set_corner_radius_all(18)
+		st.border_color = Color(0.1, 0.06, 0.15)
+		st.set_border_width_all(3)
+		badge.add_theme_stylebox_override("panel", st)
+		badge.position = Vector2(8, 8)
+		badge.size = Vector2(38, 38)
+		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card.add_child(badge)
+		var rl := Game.make_label(str(rank), 18, Color.WHITE, 4)
+		rl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		rl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		rl.size = Vector2(38, 38)
+		rl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		badge.add_child(rl)
+		var icon := TrophyIcon.new()
+		icon.position = Vector2(110, 12)
+		icon.size = Vector2(22, 24)
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card.add_child(icon)
+		var tl := Game.make_label(str(tr), 18, Color(1, 0.85, 0.3), 4)
+		tl.position = Vector2(134, 10)
+		tl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card.add_child(tl)
 		if Game.data.selected == b.id:
-			sub = "✔ AUSGEWÄHLT"
-		var sl := Game.make_label(sub, 16, Color(0.5, 1, 0.5) if Game.data.selected == b.id else Color.WHITE)
-		sl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		sl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		vb.add_child(sl)
-		var id: String = b.id
-		card.pressed.connect(func(): show_detail(id))
-		grid.add_child(card)
+			var sel := Game.make_label("✔", 26, Color(0.5, 1, 0.5), 5)
+			sel.position = Vector2(12, 150)
+			sel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			card.add_child(sel)
+	else:
+		var lock := Game.make_label("GESPERRT", 18, Color(0.85, 0.85, 0.9), 4)
+		lock.position = Vector2(10, 10)
+		lock.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card.add_child(lock)
+	var id: String = b.id
+	card.pressed.connect(func(): show_detail(id))
+	return card
 
 func show_detail(id: String, preview_skin := "-") -> void:
 	_clear()
@@ -448,6 +586,12 @@ func show_detail(id: String, preview_skin := "-") -> void:
 	var f: Dictionary = b.forms[stage_form]
 	var head := Game.make_label("%s  •  %s  •  %s" % [b.rarity, b.role, b.title], 24, b.rarity_color, 6)
 	vb.add_child(head)
+	# Rang & Trophäen dieses Brawlers
+	var btr: int = Game.brawler_trophies(b.id)
+	var rk: int = Game.rank_of(btr)
+	var nxt: int = Game.next_rank_trophies(btr)
+	var rank_l := Game.make_label("RANG %d  •  %d Trophäen%s" % [rk, btr, ("  (Rang %d bei %d)" % [rk + 1, nxt]) if nxt > 0 else "  (Höchster Rang!)"], 22, Game.rank_color(rk), 6)
+	vb.add_child(rank_l)
 	var desc := Game.make_label(b.desc, 20, Color(0.85, 0.85, 0.95), 4)
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc.custom_minimum_size = Vector2(640, 0)
@@ -1061,7 +1205,12 @@ func _run_tests() -> void:
 		var sup_ok := pl.try_super(mm.auto_aim(20.0))
 		await get_tree().create_timer(1.6).timeout
 		var d2: float = mm.total_damage - d1
-		var good: bool = atk_ok and is_equal_approx(used, 1.0) and d1 > 0.0 and sup_ok and d2 > 0.0
+		# Reine Verstärkungs-/Mauer-/Heil-Supers machen absichtlich keinen Schaden: dann zählt die Wirkung
+		var sup_spec: Dictionary = pl.form().super
+		var st: String = sup_spec.get("type", "")
+		var effect_only: bool = st == "barrier" or (st == "buff" and sup_spec.get("dmg", 0.0) <= 0.0) or (st == "zone" and sup_spec.get("dps", 0.0) <= 0.0)
+		var effect_ok: bool = mm.wall_blocks.size() > 0 if st == "barrier" else true
+		var good: bool = atk_ok and is_equal_approx(used, 1.0) and d1 > 0.0 and sup_ok and (d2 > 0.0 or (effect_only and effect_ok))
 		log.append("%s: Angriff=%s Munition=%.2f Schaden=%d | Super=%s Schaden=%d -> %s" % [b.name, atk_ok, used, int(d1), sup_ok, int(d2), "OK" if good else "FEHLER"])
 		ok = ok and good
 		mm.queue_free()

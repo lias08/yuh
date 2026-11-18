@@ -199,7 +199,7 @@ static func build(row: Array) -> Dictionary:
 	var look := {"robe": Color.html(row[8]), "trim": Color.html(row[9]), "skin": Color.html(skin_hex), "hair": Color.html(row[10]),
 		"hair_style": row[5], "face": row[6], "weapon": row[7], "cape": rarity in ["Mythisch", "Legendär"] and not ("wings" in acc),
 		"eye": col.darkened(0.35), "blade": col.lerp(Color.WHITE, 0.35), "size": row[12], "acc": acc,
-		"hat": Color.html(row[8]).darkened(0.2), "mark": col}
+		"hat": Color.html(row[8]).darkened(0.2), "mark": col, "body": _body_type(row[3], name)}
 	# Seltenere Brawler sind etwas stärker
 	var rar_mul: float = {"Selten": 1.0, "Super Selten": 1.04, "Episch": 1.08, "Mythisch": 1.12, "Legendär": 1.16}[rarity]
 	var hp: float = round(cls.hp * _var(name, "hp", 0.08) * rar_mul / 50.0) * 50.0
@@ -222,29 +222,47 @@ static func build(row: Array) -> Dictionary:
 		"kosmos": dm *= 1.03
 		"klang": sfx["stun"] = 0.4
 	hp = round(hp / 50.0) * 50.0
-	var atk := _attack(row[3], col, dm, fx)
-	var sup := _super(row[3], col, dm, sfx)
-	var atk_name: String = pre + atk.word
-	var sup_name: String = pre + sup.word
+	var kit: Array = KITS()[name]
+	var atk_spec: Dictionary = _prep(kit[2].duplicate(true), col, dm)
+	var sup_spec: Dictionary = _prep(kit[5].duplicate(true), col, dm)
 	var form := {"name": name, "look": look, "hp_mul": 1.0, "speed_mul": 1.0, "reload_mul": 1.0,
-		"aura": Color(0, 0, 0, 0), "stance": 0.2, "combo_name": atk_name, "combo_desc": atk.desc}
-	sup.spec["name"] = sup_name
-	sup.spec["desc"] = sup.desc
-	form["super"] = sup.spec
-	if atk.spec.get("type", "") == "melee":
-		form["combo"] = atk.spec.combo
+		"aura": Color(0, 0, 0, 0), "stance": 0.2, "combo_name": kit[0], "combo_desc": kit[1]}
+	sup_spec["name"] = kit[3]
+	sup_spec["desc"] = kit[4]
+	form["super"] = sup_spec
+	if atk_spec.get("type", "") == "melee":
+		form["combo"] = atk_spec.combo
 	else:
-		form["attack"] = atk.spec
+		if not atk_spec.has("range"):
+			atk_spec["range"] = atk_spec.get("radius", 3.0)
+		form["attack"] = atk_spec
 	var gtype: String = cls.gad
 	if elem in ["natur", "licht"]:
 		gtype = "heal"
 	var b := {"id": id, "name": name, "title": row[1], "rarity": rarity, "rarity_color": _rarity_color(rarity),
-		"role": cls.role, "desc": "%s %s" % [cls.desc, _elem_desc(elem)], "default_unlocked": false,
+		"role": cls.role, "desc": "%s – %s mit der Kraft des Elements %s." % [row[1], cls.role, elem.capitalize()], "default_unlocked": false,
 		"hp": hp, "speed": speed, "ammo": 3, "reload": snapped(cls.reload * _var(name, "rl", 0.06), 0.05),
 		"cooldown": 0.38, "charge_hits": 4.0, "forms": [form], "wclass": cls.wclass,
 		"gadget": _gadget(gtype, pre, col)}
 	b["skins"] = theme_skins(b, 3)
 	return b
+
+## Farbe setzen und Schaden skalieren (auch in verschachtelten Teilen wie Zonen und Wellen).
+static func _prep(d: Dictionary, col: Color, dm: float) -> Dictionary:
+	if not d.has("color"):
+		d["color"] = col
+	for k in ["dmg", "dps"]:
+		if d.has(k):
+			d[k] = round(float(d[k]) * dm)
+	for k in ["zone", "wave", "buff_after"]:
+		if d.has(k):
+			d[k] = _prep(d[k], col, dm)
+	if d.has("combo"):
+		var steps: Array = []
+		for st in d.combo:
+			steps.append(_prep(st, col, dm))
+		d["combo"] = steps
+	return d
 
 static func _rarity_color(r: String) -> Color:
 	match r:
@@ -368,59 +386,281 @@ static func _gadget(t: String, pre: String, c: Color) -> Dictionary:
 		"heal": return {"name": name, "desc": "Heilt dich um 35 %.", "type": "heal", "amount": 0.35, "cooldown": 7.0, "color": c}
 	return {"name": name, "desc": "3 Sekunden 65 % weniger Schaden.", "type": "shield", "duration": 3.0, "cooldown": 8.0, "color": c}
 
-# ------------------------------------------------------------------ Skin-Themen
-# Jedes Thema verändert Kopfbedeckung/Frisur, Gesicht, Waffe (passend zur Waffenklasse),
-# Accessoires und Farben. Preis in Edelsteinen.
-const THEMES := {
-	"pirat": {"name": "Piraten-%s", "price": 80, "look": {"hair_style": "pirate", "face": "eyepatch", "robe": Color(0.55, 0.12, 0.15), "trim": Color(0.95, 0.78, 0.3), "hat": Color(0.15, 0.12, 0.15), "acc": ["medal"]},
-		"weapon": {"melee": "katana", "gun": "pistol", "throw": "bomb", "magic": "book"}},
-	"robo": {"name": "Robo-%s", "price": 100, "look": {"hair_style": "robot", "face": "robot", "robe": Color(0.55, 0.6, 0.68), "trim": Color(0.2, 0.85, 1.0), "eye": Color(0.2, 0.85, 1.0), "acc": ["jetpack"]},
-		"weapon": {"melee": "claws", "gun": "blaster", "throw": "bomb", "magic": "wand"}},
-	"astro": {"name": "Astro-%s", "price": 100, "look": {"hair_style": "astro", "face": "shades", "robe": Color(0.95, 0.95, 0.97), "trim": Color(1.0, 0.5, 0.15), "acc": ["jetpack"]},
-		"weapon": {"melee": "spear", "gun": "blaster", "throw": "bomb", "magic": "wand"}},
-	"ritter": {"name": "Ritter %s", "price": 80, "look": {"hair_style": "knight", "face": "visor", "robe": Color(0.25, 0.35, 0.75), "trim": Color(0.95, 0.8, 0.3), "hair": Color(0.9, 0.2, 0.2), "acc": ["pauldrons"]},
-		"weapon": {"melee": "great", "gun": "bow", "throw": "boomerang", "magic": "book"}},
-	"vampir": {"name": "Vampir-%s", "price": 100, "look": {"hair_style": "tophat", "face": "fangs", "robe": Color(0.12, 0.1, 0.14), "trim": Color(0.8, 0.1, 0.2), "hat": Color(0.1, 0.08, 0.12), "skin": Color(0.88, 0.86, 0.92), "acc": ["bat_wings", "bowtie"], "scarf_color": Color(0.8, 0.1, 0.2)},
-		"weapon": {"melee": "scythe", "gun": "pistol", "throw": "bomb", "magic": "wand"}},
-	"kuerbis": {"name": "Kürbis-%s", "price": 80, "look": {"hair_style": "pumpkin", "robe": Color(0.35, 0.18, 0.45), "trim": Color(1.0, 0.55, 0.12), "acc": ["scarf"], "scarf_color": Color(0.2, 0.6, 0.25)},
-		"weapon": {"melee": "scythe", "gun": "cannon", "throw": "bomb", "magic": "staff"}},
-	"engel": {"name": "Engel %s", "price": 120, "look": {"hair_style": "long", "face": "happy", "robe": Color(0.98, 0.97, 0.95), "trim": Color(1.0, 0.82, 0.3), "hair": Color(1.0, 0.9, 0.55), "acc": ["halo", "wings"]},
-		"weapon": {"melee": "spear", "gun": "bow", "throw": "boomerang", "magic": "wand"}},
-	"wikinger": {"name": "Wikinger-%s", "price": 80, "look": {"hair_style": "viking", "face": "angry", "robe": Color(0.45, 0.32, 0.22), "trim": Color(0.75, 0.75, 0.8), "hair": Color(0.85, 0.5, 0.2), "acc": ["beard", "pauldrons"]},
-		"weapon": {"melee": "axe", "gun": "bow", "throw": "boomerang", "magic": "staff"}},
-	"samurai": {"name": "Samurai-%s", "price": 100, "look": {"hair_style": "samurai", "face": "angry", "robe": Color(0.6, 0.1, 0.12), "trim": Color(0.95, 0.78, 0.3), "acc": ["pauldrons"], "armor_color": Color(0.2, 0.18, 0.22)},
-		"weapon": {"melee": "katana", "gun": "bow", "throw": "boomerang", "magic": "fan"}},
-	"dschungel": {"name": "Dschungel-%s", "price": 60, "look": {"hair_style": "cat", "face": "fangs", "robe": Color(0.4, 0.55, 0.2), "trim": Color(0.9, 0.7, 0.3), "hair": Color(0.9, 0.6, 0.2), "acc": ["tail"]},
-		"weapon": {"melee": "claws", "gun": "bow", "throw": "boomerang", "magic": "staff"}},
-	"zirkus": {"name": "Zirkus-%s", "price": 60, "look": {"hair_style": "tophat", "face": "happy", "robe": Color(0.85, 0.15, 0.2), "trim": Color(1.0, 0.85, 0.2), "hat": Color(0.85, 0.15, 0.2), "acc": ["bowtie", "mustache"], "scarf_color": Color(1.0, 0.85, 0.2)},
-		"weapon": {"melee": "lollipop", "gun": "cannon", "throw": "bomb", "magic": "lollipop"}},
-	"gold": {"name": "Gold-%s", "price": 150, "look": {"robe": Color(1.0, 0.78, 0.2), "trim": Color(1.0, 1.0, 0.95), "hat": Color(1.0, 0.78, 0.2), "blade": Color(1.0, 0.85, 0.35), "hair": Color(1.0, 0.85, 0.4), "acc": ["crown"]}, "weapon": {}},
-	"rocker": {"name": "Rocker-%s", "price": 80, "look": {"hair_style": "mohawk", "face": "shades", "robe": Color(0.12, 0.12, 0.15), "trim": Color(0.85, 0.85, 0.9), "hair": Color(1.0, 0.25, 0.6), "acc": ["spikes"]},
-		"weapon": {"melee": "guitar", "gun": "guitar", "throw": "bomb", "magic": "guitar"}},
-}
 
-## Erzeugt `count` thematische Skins (deterministisch pro Brawler).
+## Körperbau je Klasse (mit Variation pro Brawler) – damit sich Silhouetten unterscheiden.
+static func _body_type(cls: String, name: String) -> String:
+	var opts: Array = {"panzer": ["buff", "round"], "assassine": ["slim", "slim", "tiny"], "magier": ["tall", "slim"],
+		"kanone": ["round", "buff"], "schuetze": ["normal", "slim"], "heiler": ["tiny", "normal"], "berserker": ["buff", "buff", "round"],
+		"sniper": ["tall", "slim"], "werfer": ["tiny", "round"], "krieger": ["normal", "buff"], "kontrolle": ["normal", "tall"],
+		"schrot": ["round", "buff"]}.get(cls, ["normal"])
+	return opts[_h(name + "body") % opts.size()]
+
+# ------------------------------------------------------------------ Individuelle Skins
+# Jeder Skin = eigene Farbpalette + (manchmal) neue Kopfbedeckung + eigene Accessoire-Kombination
+# + (manchmal) neue Waffe. Alles deterministisch pro Brawler, dadurch sieht jeder Skin anders aus.
+const PALETTES := {
+	"neon": ["Neon", 60, Color(0.1, 0.1, 0.16), Color(1.0, 0.2, 0.75), Color(0.2, 1.0, 0.9)],
+	"lava": ["Lava", 80, Color(0.25, 0.08, 0.06), Color(1.0, 0.45, 0.1), Color(1.0, 0.3, 0.1)],
+	"arktis": ["Arktis", 60, Color(0.88, 0.94, 1.0), Color(0.35, 0.65, 1.0), Color(0.95, 0.97, 1.0)],
+	"sakura": ["Sakura", 80, Color(1.0, 0.78, 0.86), Color(0.85, 0.3, 0.5), Color(1.0, 0.6, 0.75)],
+	"mitternacht": ["Mitternachts", 80, Color(0.1, 0.1, 0.25), Color(0.6, 0.65, 1.0), Color(0.2, 0.2, 0.4)],
+	"dschungel": ["Dschungel", 60, Color(0.25, 0.45, 0.18), Color(0.85, 0.65, 0.25), Color(0.4, 0.25, 0.1)],
+	"wuesten": ["Wüsten", 60, Color(0.9, 0.75, 0.5), Color(0.65, 0.35, 0.15), Color(0.55, 0.35, 0.2)],
+	"cyber": ["Cyber", 100, Color(0.18, 0.2, 0.25), Color(0.2, 1.0, 0.4), Color(0.85, 0.85, 0.9)],
+	"koenig": ["Königs", 150, Color(0.45, 0.1, 0.55), Color(1.0, 0.8, 0.2), Color(1.0, 0.85, 0.4)],
+	"geister": ["Geister", 100, Color(0.85, 0.9, 1.0), Color(0.5, 1.0, 0.85), Color(0.9, 1.0, 1.0)],
+	"pirat": ["Piraten", 80, Color(0.55, 0.12, 0.15), Color(0.95, 0.78, 0.3), Color(0.2, 0.15, 0.1)],
+	"bonbon": ["Bonbon", 60, Color(1.0, 0.55, 0.75), Color(0.55, 0.9, 1.0), Color(1.0, 0.9, 0.4)],
+	"kristall": ["Kristall", 120, Color(0.6, 0.45, 1.0), Color(0.85, 0.95, 1.0), Color(0.75, 0.6, 1.0)],
+	"gold": ["Gold", 150, Color(1.0, 0.78, 0.2), Color(1.0, 1.0, 0.95), Color(1.0, 0.85, 0.4)],
+	"schatten": ["Schatten", 100, Color(0.08, 0.06, 0.1), Color(0.6, 0.15, 0.3), Color(0.15, 0.1, 0.2)],
+	"ozean": ["Ozean", 60, Color(0.1, 0.45, 0.65), Color(0.95, 0.9, 0.6), Color(0.3, 0.85, 0.85)],
+	"retro": ["Retro", 60, Color(0.95, 0.55, 0.15), Color(0.15, 0.6, 0.6), Color(0.45, 0.25, 0.1)],
+	"himmel": ["Himmels", 120, Color(0.98, 0.97, 0.95), Color(1.0, 0.82, 0.3), Color(1.0, 0.9, 0.55)],
+}
+const HEADGEAR := ["cowboy", "pirate", "tophat", "knight", "viking", "samurai", "astro", "robot", "pumpkin", "beanie",
+	"cap", "mohawk", "afro", "flame", "bunny", "cat", "wizard", "helmet", "mushroom", "hood", "topknot", "long"]
+const ACCS := ["crown", "halo", "horns", "wings", "bat_wings", "pauldrons", "spikes", "scarf", "backpack", "jetpack",
+	"tail", "bowtie", "medal", "antenna", "flower", "mustache"]
+const FACES := ["happy", "angry", "shades", "eyepatch", "fangs", "sleepy", "goggles", "visor", "robot", "cyclops"]
+const WEAPONS := {"melee": ["katana", "axe", "scythe", "spear", "claws", "great", "hammer", "trident"],
+	"gun": ["pistol", "blaster", "bow", "cannon", "shotgun", "guitar"],
+	"throw": ["bomb", "boomerang"], "magic": ["staff", "wand", "book", "fan", "lollipop"]}
+
 static func theme_skins(b: Dictionary, count: int) -> Array:
-	var keys: Array = THEMES.keys()
-	var base_style: String = b.forms[0].look.get("hair_style", "")
+	var keys: Array = PALETTES.keys()
 	var out := []
-	var start := _h(b.id) % keys.size()
 	var i := 0
-	while out.size() < count and i < keys.size():
-		var key: String = keys[(start + i * 5) % keys.size()]
+	while out.size() < count and i < 40:
+		var key: String = keys[_h(b.id + "pal" + str(i)) % keys.size()]
 		i += 1
-		var th: Dictionary = THEMES[key]
-		if th.look.get("hair_style", "") == base_style and base_style != "":
+		if out.any(func(sk): return sk.theme == key):
 			continue
-		if out.any(func(s): return s.theme == key):
-			continue
-		out.append(theme_skin(b, key))
+		out.append(theme_skin(b, key, out.size()))
 	return out
 
-static func theme_skin(b: Dictionary, key: String) -> Dictionary:
-	var th: Dictionary = THEMES[key]
-	var lk: Dictionary = th.look.duplicate(true)
+static func theme_skin(b: Dictionary, key: String, n := 0) -> Dictionary:
+	var pal: Array = PALETTES.get(key, PALETTES["gold"])
+	var base: Dictionary = b.forms[0].look
+	var seed: String = b.id + key
+	var lk := {"robe": pal[2], "trim": pal[3], "hair": pal[4], "hat": pal[2].darkened(0.15), "blade": pal[3].lerp(Color.WHITE, 0.3),
+		"scarf_color": pal[3], "acc_color": pal[3], "pack_color": pal[2].darkened(0.2), "armor_color": pal[3].lerp(Color(0.7, 0.7, 0.75), 0.5),
+		"wing_color": pal[4].lerp(Color.WHITE, 0.4), "eye": pal[3].darkened(0.2)}
+	# Kopfbedeckung: bei mehrformigen Brawlern nie, sonst oft eine neue
+	if b.forms.size() == 1 and _h(seed + "hg") % 3 != 0:
+		var hg: String = HEADGEAR[_h(seed + "hgk") % HEADGEAR.size()]
+		if hg != base.get("hair_style", ""):
+			lk["hair_style"] = hg
+	if b.forms.size() == 1 and _h(seed + "fc") % 2 == 0:
+		lk["face"] = FACES[_h(seed + "fck") % FACES.size()]
+	# 1–2 eigene Accessoires
+	var accs: Array = []
+	for k in 1 + _h(seed + "na") % 2:
+		var a: String = ACCS[_h(seed + "ac" + str(k)) % ACCS.size()]
+		if not a in accs:
+			accs.append(a)
+	lk["acc"] = accs
+	# Waffe passend zur Klasse austauschen
 	var wc: String = b.get("wclass", "")
-	if wc != "" and th.weapon.has(wc) and b.forms.size() == 1:
-		lk["weapon"] = th.weapon[wc]
-	return {"id": "%s_%s" % [b.id, key], "name": th.name % b.name, "price": th.price, "theme": key, "look": lk}
+	if wc != "" and b.forms.size() == 1 and _h(seed + "wp") % 2 == 0:
+		var opts: Array = WEAPONS[wc]
+		lk["weapon"] = opts[_h(seed + "wpk") % opts.size()]
+	var name_s: String = "%s-%s" % [pal[0], b.name]
+	return {"id": "%s_%s" % [b.id, key], "name": name_s, "price": pal[1], "theme": key, "look": lk}
+
+# ------------------------------------------------------------------ Individuelle Fähigkeiten
+# Pro Brawler: [Angriffsname, Beschreibung, Angriff, Super-Name, Beschreibung, Super].
+# Farben setzt build() aus dem Element. Schaden wird mit Seltenheit leicht skaliert.
+static func M(steps: Array) -> Dictionary:
+	return {"type": "melee", "combo": steps}
+
+static func KITS() -> Dictionary:
+	return {
+	# ---------------- Selten
+	"Zunder": ["Glutsalve", "1 Munition = 3 schnelle Feuerkugeln.", {"type": "shot", "dmg": 330.0, "range": 8.0, "speed": 22.0, "burst": 3, "interval": 0.09, "width": 0.22},
+		"Feuersbrunst", "Setzt den Zielbereich 4 s lang in Flammen.", {"type": "zone", "range": 7.0, "radius": 2.3, "dur": 4.0, "dps": 650.0}],
+	"Quirl": ["Wirbelschnitt", "1 Munition = 2 Rundum-Schnitte um sich herum.", M([{"t": 0.0, "dir": "ltr", "dmg": 430.0, "range": 2.1, "arc": 360.0}, {"t": 0.15, "dir": "rtl", "dmg": 430.0, "range": 2.1, "arc": 360.0}]),
+		"Taifunlauf", "Wird 2,5 s zum Wirbelwind: trifft ringsum ständig und ist schneller.", {"type": "spin", "dur": 2.5, "radius": 2.2, "dmg": 280.0}],
+	"Klotz": ["Felsfaust", "1 Munition = ein Schlag, der Gegner weit wegschleudert.", M([{"t": 0.0, "dir": "over", "dmg": 1200.0, "range": 2.4, "arc": 120.0, "knock": 2.2}]),
+		"Erdbebenstoß", "3 Bodenwellen um ihn herum, die Kisten zerstören.", {"type": "slam", "waves": 3, "radius": 2.2, "dmg": 650.0, "knock": 1.2, "break": true}],
+	"Pippa": ["Zappelbombe", "1 Munition = eine Bombe, die in 3 Mini-Explosionen zerplatzt.", {"type": "lob", "dmg": 700.0, "range": 7.5, "radius": 1.3, "cluster": 3},
+		"Tesla-Turm", "Baut einen Turm, dessen Blitze auf weitere Gegner überspringen.", {"type": "turret", "dur": 8.0, "interval": 0.75, "dmg": 260.0, "range": 7.0, "chain": 2}],
+	"Moosbart": ["Dornenspross", "1 Munition = eine Kugel, die ihn um 30 % des Schadens heilt.", {"type": "shot", "dmg": 620.0, "range": 8.0, "speed": 12.0, "width": 0.35, "visual": "orb", "drain": 0.3},
+		"Wurzelgriff", "Wurzeln halten Gegner im Zielbereich fest (stark verlangsamt) und schaden ihnen.", {"type": "zone", "range": 7.0, "radius": 2.5, "dur": 4.0, "dps": 300.0, "slow": 3.0}],
+	"Rostig": ["Schrottkanone", "1 Munition = 6 Schrottteile in breitem Fächer.", {"type": "shot", "dmg": 250.0, "range": 4.5, "speed": 16.0, "count": 6, "spread": 55.0},
+		"Schrottlawine", "Rollt nach vorne, schleudert alles weg und zerstört Kisten.", {"type": "dash", "dmg": 1600.0, "range": 6.5, "speed": 15.0, "knock": 3.0, "break": true}],
+	"Flitz": ["Paketexpress", "1 Munition = ein Paket, das bis zu 2-mal von Wänden abprallt.", {"type": "shot", "dmg": 650.0, "range": 9.0, "speed": 20.0, "width": 0.3, "bounce": 2},
+		"Eillieferung", "5 s schneller, sofort nachgeladen und 30 % mehr Schaden.", {"type": "buff", "dur": 5.0, "speed": true, "reload": true, "dmg_mult": 1.3}],
+	"Kiesel": ["Kieselbumerang", "1 Munition = ein Bumerang, der hin und zurück trifft.", {"type": "shot", "dmg": 480.0, "range": 6.5, "speed": 15.0, "width": 0.35, "boomerang": true, "visual": "orb"},
+		"Steinlawine", "6 Felsbrocken stürzen auf den Zielbereich.", {"type": "meteor", "range": 8.0, "count": 6, "dmg": 600.0, "radius": 1.3, "spread": 2.5}],
+	"Brise": ["Windklinge", "1 Munition = 2 Windklingen mit Rückstoß.", {"type": "shot", "dmg": 450.0, "range": 7.5, "speed": 18.0, "count": 2, "spread": 10.0, "width": 0.3, "knock": 0.8},
+		"Fächersturm", "5 große Windsicheln im Fächer, die alles wegschieben.", {"type": "fan", "count": 5, "spread": 70.0, "dmg": 600.0, "range": 8.0, "speed": 16.0, "width": 0.7, "knock": 2.0}],
+	"Knall": ["Böller", "1 Munition = ein Böller mit großer Explosion.", {"type": "lob", "dmg": 950.0, "range": 7.5, "radius": 1.6},
+		"Großes Finale", "8 Feuerwerkskörper regnen im Zielbereich herab.", {"type": "meteor", "range": 8.0, "count": 8, "dmg": 450.0, "radius": 1.2, "interval": 0.12, "spread": 2.8}],
+	"Hagel": ["Frostpfeil", "1 Munition = ein weiter Pfeil, der verlangsamt.", {"type": "shot", "dmg": 1000.0, "range": 11.0, "speed": 30.0, "width": 0.22, "slow": 1.0},
+		"Eissturm", "Hagelkörner prasseln herab und verlangsamen stark.", {"type": "meteor", "range": 9.0, "count": 7, "dmg": 480.0, "radius": 1.5, "slow": 1.5, "spread": 2.6}],
+	"Tobi": ["Axthieb", "1 Munition = ein Seitenhieb und ein Schlag von oben.", M([{"t": 0.0, "dir": "ltr", "dmg": 650.0, "range": 2.6, "arc": 140.0}, {"t": 0.2, "dir": "over", "dmg": 600.0, "range": 2.6, "arc": 100.0, "knock": 1.0}]),
+		"Axtwurf", "Wirft seine Axt, die durch alle fliegt und zurückkehrt.", {"type": "shot", "dmg": 1100.0, "range": 8.0, "speed": 14.0, "width": 0.6, "boomerang": true, "pierce": true, "visual": "orb"}],
+	"Mira": ["Mondsichel", "1 Munition = eine Kugel, die am Ende in 4 Splitter zerbricht.", {"type": "shot", "dmg": 550.0, "range": 7.0, "speed": 12.0, "width": 0.35, "visual": "orb", "split": 4},
+		"Sternenkreis", "4 Sterne kreisen 6 s um sie und treffen jeden, der nahe kommt.", {"type": "orbit", "count": 4, "dmg": 420.0, "dur": 6.0, "radius": 1.8}],
+	"Ruß": ["Rußwolke", "1 Munition = 5 Rußladungen, die leicht verlangsamen.", {"type": "shot", "dmg": 280.0, "range": 5.0, "speed": 16.0, "count": 5, "spread": 45.0, "slow": 0.5},
+		"Rußbombe", "Riesige Rußwolke: Schaden und starke Verlangsamung für 4 s.", {"type": "lob", "dmg": 900.0, "range": 8.0, "radius": 2.2, "zone": {"radius": 2.2, "dur": 4.0, "dps": 120.0, "slow": 2.0}}],
+	"Sumpfi": ["Sumpfblase", "1 Munition = eine Blase, die eine giftige Pfütze hinterlässt.", {"type": "lob", "dmg": 400.0, "range": 7.0, "radius": 1.5, "zone": {"radius": 1.5, "dur": 2.5, "dps": 320.0, "slow": 0.6}},
+		"Moorgrund", "Großes Moor: Gegner werden langsam, Verbündete geheilt.", {"type": "zone", "range": 6.0, "radius": 3.2, "dur": 5.0, "dps": 380.0, "slow": 1.0, "heal": 0.06}],
+	"Blinker": ["Leuchtstrahl", "1 Munition = ein sofortiger Lichtstrahl.", {"type": "beam", "dmg": 750.0, "range": 9.0, "width": 0.35},
+		"Leuchtturm", "Baut einen Leuchtturm, der Gegner beschießt und verlangsamt.", {"type": "turret", "dur": 8.0, "interval": 0.5, "dmg": 240.0, "range": 7.5, "slow": 0.6}],
+	"Bolzen": ["Armbrustbolzen", "1 Munition = ein Bolzen, der durch alle Gegner fliegt.", {"type": "shot", "dmg": 900.0, "range": 10.5, "speed": 32.0, "width": 0.22, "pierce": true},
+		"Bolzenhagel", "9 durchschlagende Bolzen im weiten Fächer.", {"type": "shot", "dmg": 450.0, "range": 9.0, "speed": 28.0, "count": 9, "spread": 70.0, "pierce": true}],
+	"Fauchi": ["Krallenhatz", "1 Munition = 3 schnelle Krallenhiebe.", M([{"t": 0.0, "dir": "thrust", "dmg": 360.0, "range": 2.2, "arc": 80.0}, {"t": 0.07, "dir": "ltr", "dmg": 360.0, "range": 2.2, "arc": 110.0}, {"t": 0.14, "dir": "rtl", "dmg": 420.0, "range": 2.2, "arc": 110.0}]),
+		"Raubtiersprung", "Springt auf Gegner und heilt sich danach 4 s lang durch Treffer.", {"type": "leap", "range": 7.0, "radius": 1.8, "dmg": 1400.0, "buff_after": {"type": "buff", "dur": 4.0, "lifesteal": 0.4}}],
+	"Krabbler": ["Dreizackstich", "1 Munition = ein weitreichender Stich mit Rückstoß.", M([{"t": 0.0, "dir": "thrust", "dmg": 1100.0, "range": 3.3, "arc": 50.0, "knock": 1.2}]),
+		"Flutwelle", "Eine riesige Welle, die alle weit zurückspült.", {"type": "wave", "dmg": 1400.0, "range": 8.0, "width": 1.8, "speed": 10.0, "pierce": true, "knock": 3.0}],
+	"Dudel": ["Akkordsalve", "1 Munition = 3 Töne im Fächer, die leicht verlangsamen.", {"type": "shot", "dmg": 340.0, "range": 7.5, "speed": 15.0, "count": 3, "spread": 25.0, "width": 0.3, "visual": "orb", "slow": 0.4},
+		"Bassdrop", "3 Schallwellen um ihn herum, die kurz betäuben.", {"type": "slam", "waves": 3, "radius": 2.0, "dmg": 580.0, "stun": 0.4}],
+	"Pfiff": ["Pfiffschuss", "1 Munition = 2 Schüsse, deren Funken auf einen weiteren Gegner springen.", {"type": "shot", "dmg": 440.0, "range": 8.5, "speed": 22.0, "burst": 2, "interval": 0.1, "chain": 1},
+		"Rote Karte", "Teleportiert zum Gegner und betäubt ihn 2 s.", {"type": "blink", "range": 8.0, "dmg": 1600.0, "stun": 2.0}],
+	"Brummer": ["Hummelkanone", "1 Munition = eine Kugel, die beim Aufprall explodiert.", {"type": "shot", "dmg": 800.0, "range": 8.0, "speed": 11.0, "width": 0.5, "visual": "orb", "explode": 1.3},
+		"Schwarmangriff", "6 Hummeln umkreisen ihn 7 s lang.", {"type": "orbit", "count": 6, "dmg": 300.0, "dur": 7.0, "radius": 2.2, "spin_speed": 6.0}],
+	"Koko": ["Kokosnuss", "1 Munition = eine Kokosnuss, die Gegner kurz betäubt.", {"type": "lob", "dmg": 950.0, "range": 7.0, "radius": 1.2, "stun": 0.35, "knock": 1.2},
+		"Palmenregen", "5 Kokosnüsse fallen vom Himmel.", {"type": "meteor", "range": 8.0, "count": 5, "dmg": 700.0, "radius": 1.5, "stun": 0.4}],
+	"Schnapp": ["Bärenfalle", "1 Munition = legt eine Falle, die Gegner betäubt (max. 4).", {"type": "mine", "range": 1.5, "dmg": 850.0, "radius": 1.4, "stun": 1.0},
+		"Palisade", "Baut eine Holzwand (5 Felder) für 6 s.", {"type": "barrier", "range": 2.2, "width": 5, "dur": 6.0}],
+	"Wuschel": ["Kuschelklatscher", "1 Munition = 3 Klatscher, der letzte betäubt kurz.", M([{"t": 0.0, "dir": "ltr", "dmg": 380.0, "range": 2.4, "arc": 130.0}, {"t": 0.12, "dir": "rtl", "dmg": 380.0, "range": 2.4, "arc": 130.0}, {"t": 0.26, "dir": "over", "dmg": 500.0, "range": 2.5, "arc": 100.0, "stun": 0.4}]),
+		"Riesenknuddler", "Zieht alle Gegner in der Nähe zu sich heran und drückt zu.", {"type": "zone", "range": 0.0, "radius": 3.2, "dur": 1.6, "dps": 1100.0, "pull": 5.0}],
+	# ---------------- Super Selten
+	"Glutherz": ["Ambossschlag", "1 Munition = ein Hammerschlag, der eine Feuerwelle auslöst.", M([{"t": 0.0, "dir": "over", "dmg": 1050.0, "range": 2.6, "arc": 110.0, "wave": {"dmg": 450.0, "range": 4.5, "width": 0.6, "speed": 12.0}}]),
+		"Schmiedefeuer", "Explodiert in Flammen und hat 5 s Schild und +60 % Schaden.", {"type": "buff", "dur": 5.0, "dmg_mult": 1.6, "shield": true, "dmg": 800.0, "radius": 2.5}],
+	"Raureif": ["Eissplitter", "1 Munition = 3 geworfene Eissplitter, die verlangsamen.", {"type": "shot", "dmg": 330.0, "range": 6.5, "speed": 22.0, "count": 3, "spread": 12.0, "width": 0.22, "slow": 0.6},
+		"Eisspiegel", "Wird 4 s unsichtbar und schneller.", {"type": "buff", "dur": 4.0, "invis": true, "speed": true}],
+	"Zappel": ["Funkenlanze", "1 Munition = ein kurzer Blitzstrahl, der auf 2 Gegner überspringt.", {"type": "beam", "dmg": 700.0, "range": 4.5, "width": 0.5, "chain": 2},
+		"Gewitterspeer", "Ein Blitzspeer, der durch alles fliegt und auf 3 Gegner überspringt.", {"type": "shot", "dmg": 1900.0, "range": 12.0, "speed": 30.0, "width": 0.5, "pierce": true, "chain": 3, "visual": "orb"}],
+	"Morla": ["Giftfluch", "1 Munition = ein zielsuchender Fluch, der eine Giftpfütze hinterlässt.", {"type": "shot", "dmg": 480.0, "range": 8.0, "speed": 9.0, "width": 0.35, "visual": "orb", "homing": 4.0, "zone": {"radius": 1.2, "dur": 2.0, "dps": 220.0}},
+		"Hexenkessel", "Ein brodelnder Giftkessel: Schaden und Verlangsamen für 5 s.", {"type": "zone", "range": 7.0, "radius": 3.4, "dur": 5.0, "dps": 450.0, "slow": 1.0}],
+	"Kanonenkäthe": ["Prallkugel", "1 Munition = eine Kanonenkugel, die 3-mal abprallt.", {"type": "shot", "dmg": 950.0, "range": 10.0, "speed": 13.0, "width": 0.5, "visual": "orb", "bounce": 3},
+		"Volle Breitseite", "5 explodierende Kanonenkugeln im Fächer.", {"type": "shot", "dmg": 700.0, "range": 9.0, "speed": 14.0, "count": 5, "spread": 50.0, "width": 0.5, "visual": "orb", "explode": 1.2}],
+	"Säbelzahn": ["Frostbiss", "1 Munition = 3 eisige Hiebe, die verlangsamen.", M([{"t": 0.0, "dir": "ltr", "dmg": 420.0, "range": 2.7, "arc": 140.0, "slow": 0.8}, {"t": 0.12, "dir": "rtl", "dmg": 420.0, "range": 2.7, "arc": 140.0, "slow": 0.8}, {"t": 0.26, "dir": "over", "dmg": 600.0, "range": 2.9, "arc": 100.0, "slow": 0.8}]),
+		"Gletscherspalte", "Eine Eiswelle, die betäubt und ein Eisfeld hinterlässt.", {"type": "wave", "dmg": 1400.0, "range": 8.0, "width": 1.2, "speed": 12.0, "pierce": true, "stun": 1.0, "break": true, "zone": {"radius": 2.0, "dur": 3.0, "dps": 0.0, "slow": 1.0}}],
+	"Schattenfuchs": ["Fuchsklaue", "1 Munition = 2 Klauenhiebe, die ihn heilen.", M([{"t": 0.0, "dir": "ltr", "dmg": 520.0, "range": 2.3, "arc": 120.0, "drain": 0.25}, {"t": 0.12, "dir": "rtl", "dmg": 520.0, "range": 2.3, "arc": 120.0, "drain": 0.25}]),
+		"Fuchsfeuer", "5 Geisterflammen umkreisen ihn, dazu 5 s Tempo.", {"type": "orbit", "count": 5, "dmg": 340.0, "dur": 5.0, "radius": 1.5, "buff_after": {"type": "buff", "dur": 5.0, "speed": true}}],
+	"Felsenfaust": ["Gipfelhieb", "1 Munition = zwei wuchtige Fausthiebe.", M([{"t": 0.0, "dir": "ltr", "dmg": 650.0, "range": 2.4, "arc": 120.0}, {"t": 0.18, "dir": "rtl", "dmg": 650.0, "range": 2.4, "arc": 120.0, "knock": 1.5}]),
+		"Bergsturz", "Springt weit und schlägt mit voller Wucht ein – zerstört Kisten.", {"type": "leap", "range": 8.0, "radius": 3.0, "dmg": 1900.0, "stun": 0.8, "break": true}],
+	"Nova": ["Plasmasalve", "1 Munition = 4 schnelle Plasmaschüsse.", {"type": "shot", "dmg": 260.0, "range": 9.0, "speed": 26.0, "burst": 4, "interval": 0.07, "width": 0.2},
+		"Orbitalschlag", "Ein gewaltiger Laser aus dem All, der Kisten zerschmilzt.", {"type": "beam", "dmg": 2500.0, "range": 13.0, "width": 1.0, "break": true}],
+	"Wellenreiter": ["Gischtschuss", "1 Munition = ein Wasserschuss mit starkem Rückstoß.", {"type": "shot", "dmg": 520.0, "range": 7.0, "speed": 16.0, "width": 0.5, "visual": "orb", "knock": 1.6},
+		"Monsterwelle", "Eine gigantische Welle, die alle mitreißt und verlangsamt.", {"type": "wave", "dmg": 1250.0, "range": 10.0, "width": 2.2, "speed": 9.0, "pierce": true, "knock": 4.0, "slow": 1.0}],
+	"Dornröschen": ["Rosenranke", "1 Munition = eine Ranke (Strahl), die Gegner festhält.", {"type": "beam", "dmg": 620.0, "range": 7.0, "width": 0.3, "slow": 1.2},
+		"Dornenhecke", "Lässt eine Dornenhecke wachsen und heilt sich um 30 %.", {"type": "barrier", "range": 2.2, "width": 5, "dur": 6.0, "buff_after": {"type": "buff", "dur": 2.0, "heal": 0.3}}],
+	"Donnerkeil": ["Blitzbumerang", "1 Munition = ein Bumerang, dessen Blitze überspringen.", {"type": "shot", "dmg": 440.0, "range": 7.0, "speed": 16.0, "width": 0.3, "boomerang": true, "chain": 1, "visual": "orb"},
+		"Kugelblitz", "Ein langsamer Kugelblitz, der wächst und Blitze verteilt.", {"type": "shot", "dmg": 1300.0, "range": 9.0, "speed": 7.0, "width": 0.5, "grow": 2.0, "pierce": true, "chain": 2, "visual": "orb"}],
+	"Pilzkopf": ["Sporenwolke", "1 Munition = eine Sporenwolke, die verlangsamt.", {"type": "lob", "dmg": 300.0, "range": 7.0, "radius": 1.8, "zone": {"radius": 1.8, "dur": 3.0, "dps": 330.0, "slow": 0.5}},
+		"Sporenexplosion", "2 Sporenwellen um ihn herum, die lange verlangsamen.", {"type": "slam", "waves": 2, "radius": 2.6, "dmg": 750.0, "slow": 2.0}],
+	"Ritter Rost": ["Ritterschlag", "1 Munition = ein schwerer Schwertschlag von oben.", M([{"t": 0.0, "dir": "over", "dmg": 1050.0, "range": 2.9, "arc": 110.0}]),
+		"Letzte Bastion", "5 s Schild, +40 % Schaden und 20 % Heilung.", {"type": "buff", "dur": 5.0, "shield": true, "dmg_mult": 1.4, "heal": 0.2}],
+	"Tiefseeted": ["Harpune", "1 Munition = eine Harpune, die den Gegner heranzieht.", {"type": "shot", "dmg": 750.0, "range": 8.0, "speed": 18.0, "width": 0.3, "pull": 4.0},
+		"Tiefenstrudel", "Ein Strudel, der Gegner in die Mitte zieht.", {"type": "zone", "range": 7.0, "radius": 3.0, "dur": 3.0, "dps": 450.0, "pull": 4.0}],
+	"Kobold": ["Glückstopf", "1 Munition = ein Topf, der in 2 Glücksexplosionen zerspringt.", {"type": "lob", "dmg": 700.0, "range": 7.5, "radius": 1.4, "cluster": 2, "knock": 0.8},
+		"Regenbogenschatz", "Goldregen: 6 Einschläge, die Verbündete heilen.", {"type": "meteor", "range": 8.0, "count": 6, "dmg": 500.0, "radius": 1.3, "zone": {"radius": 1.5, "dur": 2.0, "heal": 0.1}}],
+	"Lavalurch": ["Lavaklaue", "1 Munition = 2 Klauenhiebe und ein Stoß mit Rückstoß.", M([{"t": 0.0, "dir": "ltr", "dmg": 440.0, "range": 2.6, "arc": 130.0}, {"t": 0.12, "dir": "rtl", "dmg": 440.0, "range": 2.6, "arc": 130.0}, {"t": 0.26, "dir": "thrust", "dmg": 580.0, "range": 2.9, "arc": 70.0, "knock": 1.2}]),
+		"Vulkansprung", "Springt auf Gegner und hinterlässt einen Lavasee.", {"type": "leap", "range": 7.0, "radius": 2.6, "dmg": 1500.0, "zone": {"radius": 2.6, "dur": 4.0, "dps": 400.0}}],
+	"Spuk": ["Spukball", "1 Munition = ein Geisterball, der Gegner verfolgt.", {"type": "shot", "dmg": 560.0, "range": 8.5, "speed": 10.0, "width": 0.4, "visual": "orb", "homing": 3.0, "slow": 0.6},
+		"Schreckensschrei", "Ein Schrei, der alle in der Nähe 1,2 s betäubt.", {"type": "slam", "radius": 4.0, "dmg": 500.0, "stun": 1.2}],
+	"Kaktus Karl": ["Stachelkranz", "1 Munition = 9 Stacheln in alle Richtungen.", {"type": "shot", "dmg": 220.0, "range": 4.5, "speed": 15.0, "count": 9, "spread": 320.0, "width": 0.2},
+		"Dornenpanzer", "Stacheln explodieren um ihn herum, dazu 5 s Schild.", {"type": "buff", "dur": 5.0, "shield": true, "dmg": 950.0, "radius": 3.0}],
+	"Schallwelle": ["Bassbombe", "1 Munition = eine Schallkugel, die mit der Strecke wächst.", {"type": "shot", "dmg": 700.0, "range": 7.0, "speed": 9.0, "width": 0.4, "grow": 2.0, "pierce": true, "knock": 1.0, "visual": "orb"},
+		"Schallkanone", "Ein breiter Schallstrahl, der alle wegdrückt.", {"type": "beam", "dmg": 1700.0, "range": 12.0, "width": 1.2, "knock": 3.0}],
+	"Eulalia": ["Eulenblick", "1 Munition = ein Pfeil, der leicht zum Ziel lenkt.", {"type": "shot", "dmg": 900.0, "range": 11.0, "speed": 24.0, "width": 0.22, "homing": 2.0},
+		"Federwirbel", "16 Federn fliegen in alle Richtungen.", {"type": "nova", "dmg": 420.0, "range": 7.0, "speed": 13.0, "count": 16, "burst": 1, "width": 0.3}],
+	"Tornado": ["Sensenschwung", "1 Munition = 2 extrem weite Sensenschwünge.", M([{"t": 0.0, "dir": "ltr", "dmg": 600.0, "range": 3.0, "arc": 220.0}, {"t": 0.2, "dir": "rtl", "dmg": 600.0, "range": 3.0, "arc": 220.0, "knock": 0.6}]),
+		"Windhose", "Ein Tornado zieht Gegner ein und wirbelt sie herum.", {"type": "zone", "range": 7.0, "radius": 2.5, "dur": 3.5, "dps": 500.0, "pull": 4.0}],
+	"Funkelfee": ["Feenstaub", "1 Munition = Feenstaub, der abprallt und sie heilt.", {"type": "shot", "dmg": 520.0, "range": 8.0, "speed": 13.0, "width": 0.35, "visual": "orb", "bounce": 1, "drain": 0.4},
+		"Sternenschutz", "Ein Heilkreis um sie, der 6 s lang alle Verbündeten heilt.", {"type": "zone", "range": 0.0, "radius": 3.5, "dur": 6.0, "heal": 0.15}],
+	"Panzerknacker": ["Tresorschrot", "1 Munition = 4 Schrotkugeln, die Kisten durchschlagen.", {"type": "shot", "dmg": 320.0, "range": 5.5, "speed": 16.0, "count": 4, "spread": 30.0, "break": true},
+		"Dynamitpaket", "Legt ein riesiges Dynamitpaket, das Kisten sprengt.", {"type": "mine", "range": 1.8, "dmg": 2400.0, "radius": 2.6, "break": true}],
+	"Mammut": ["Stoßzahn", "1 Munition = ein Stoß, der verlangsamt und wegschleudert.", M([{"t": 0.0, "dir": "thrust", "dmg": 1150.0, "range": 2.8, "arc": 70.0, "knock": 2.0, "slow": 0.8}]),
+		"Stampede", "Stürmt los, trampelt alles nieder und verlangsamt.", {"type": "dash", "dmg": 1500.0, "range": 9.0, "speed": 13.0, "knock": 3.0, "slow": 2.0}],
+	# ---------------- Episch
+	"Phönixa": ["Phönixfeder", "1 Munition = 3 Federn, die leicht zum Ziel lenken.", {"type": "shot", "dmg": 350.0, "range": 8.0, "speed": 14.0, "count": 3, "spread": 20.0, "width": 0.3, "visual": "orb", "homing": 1.5},
+		"Wiedergeburt", "Explodiert in Flammen, heilt sich um 60 % und wird schneller.", {"type": "buff", "dur": 4.0, "heal": 0.6, "speed": true, "dmg": 1100.0, "radius": 3.0}],
+	"Frostbiss": ["Eiszapfen", "1 Munition = ein Eiszapfen, der in 4 Splitter zerbricht.", {"type": "shot", "dmg": 1000.0, "range": 10.0, "speed": 26.0, "width": 0.25, "split": 4},
+		"Absoluter Nullpunkt", "Ein Eisstrahl, der alle Getroffenen 1,5 s einfriert.", {"type": "beam", "dmg": 1400.0, "range": 12.0, "width": 0.8, "stun": 1.5}],
+	"Volt-Otto": ["Spulenblitz", "1 Munition = ein Blitz, der auf 3 Gegner überspringt.", {"type": "beam", "dmg": 450.0, "range": 6.0, "width": 0.3, "chain": 3},
+		"Stromfeld", "Ein Stromfeld, das Gegner immer wieder lähmt.", {"type": "zone", "range": 7.0, "radius": 2.8, "dur": 3.0, "dps": 400.0, "stun": 0.3}],
+	"Nachtschatten": ["Schattenschnitt", "1 Munition = 2 Schnitte und ein Stich.", M([{"t": 0.0, "dir": "ltr", "dmg": 480.0, "range": 2.6, "arc": 130.0}, {"t": 0.09, "dir": "rtl", "dmg": 480.0, "range": 2.6, "arc": 130.0}, {"t": 0.2, "dir": "thrust", "dmg": 650.0, "range": 2.9, "arc": 60.0}]),
+		"Schattenzwilling", "Verschwindet 3 s und trifft danach mit +80 % Schaden.", {"type": "buff", "dur": 3.5, "invis": true, "dmg_mult": 1.8}],
+	"Kraken-Kai": ["Tentakelpeitsche", "1 Munition = 2 Tentakel, die Gegner heranziehen.", {"type": "shot", "dmg": 560.0, "range": 5.5, "speed": 18.0, "count": 2, "spread": 20.0, "width": 0.3, "pull": 2.5},
+		"Kraken erwacht", "8 Tentakel kreisen um ihn und verlangsamen.", {"type": "orbit", "count": 8, "dmg": 330.0, "dur": 5.0, "radius": 2.4, "spin_speed": 3.0, "slow": 1.0}],
+	"Sternenstaub": ["Kometenschweif", "1 Munition = ein Komet, der immer schneller wird und durchfliegt.", {"type": "shot", "dmg": 700.0, "range": 10.0, "speed": 10.0, "width": 0.3, "accel": 2.0, "pierce": true, "visual": "orb"},
+		"Sternschnuppenregen", "10 Sternschnuppen regnen auf das Zielgebiet.", {"type": "meteor", "range": 9.0, "count": 10, "dmg": 430.0, "radius": 1.2, "spread": 3.0, "interval": 0.12}],
+	"Gaia": ["Lebensstrahl", "1 Munition = ein Strahl, der sie um 50 % des Schadens heilt.", {"type": "beam", "dmg": 600.0, "range": 8.0, "width": 0.3, "drain": 0.5},
+		"Erblühen", "Ein Blumenfeld: heilt Verbündete, verlangsamt Gegner.", {"type": "zone", "range": 0.0, "radius": 4.0, "dur": 6.0, "dps": 300.0, "slow": 0.6, "heal": 0.12}],
+	"Golem": ["Golemfaust", "1 Munition = ein Schlag, der betäubt und wegschleudert.", M([{"t": 0.0, "dir": "over", "dmg": 1300.0, "range": 2.4, "arc": 120.0, "knock": 2.0, "stun": 0.3}]),
+		"Steinwall", "Errichtet eine Steinmauer und bekommt 5 s Schild.", {"type": "barrier", "range": 2.2, "width": 5, "dur": 7.0, "buff_after": {"type": "buff", "dur": 5.0, "shield": true}}],
+	"Arietta": ["Hohes C", "1 Munition = ein Schallstrahl, der stark verlangsamt.", {"type": "beam", "dmg": 520.0, "range": 8.0, "width": 0.6, "slow": 1.2},
+		"Arie der Stille", "2 Klangwellen, die alle in der Nähe betäuben.", {"type": "slam", "waves": 2, "radius": 3.4, "dmg": 600.0, "stun": 1.0}],
+	"Sturmkrähe": ["Krähenpfeil", "1 Munition = ein Pfeil, der einmal abprallt.", {"type": "shot", "dmg": 950.0, "range": 11.0, "speed": 28.0, "width": 0.22, "bounce": 1},
+		"Krähenschwarm", "7 Krähen jagen zielsuchend die Gegner.", {"type": "shot", "dmg": 420.0, "range": 10.0, "speed": 14.0, "count": 7, "spread": 60.0, "width": 0.3, "homing": 3.0, "visual": "orb"}],
+	"Vulkan": ["Lavabrocken", "1 Munition = ein Lavabrocken, der brennenden Boden hinterlässt.", {"type": "lob", "dmg": 850.0, "range": 7.5, "radius": 1.5, "zone": {"radius": 1.5, "dur": 2.5, "dps": 300.0}},
+		"Eruption", "8 Lavabomben, die brennende Felder hinterlassen.", {"type": "meteor", "range": 8.5, "count": 8, "dmg": 650.0, "radius": 1.6, "spread": 3.0, "zone": {"radius": 1.4, "dur": 3.0, "dps": 280.0}}],
+	"Giftzahn": ["Schlangenbiss", "1 Munition = 2 Giftschlangen, die Gegner verfolgen und ihn heilen.", {"type": "shot", "dmg": 440.0, "range": 8.0, "speed": 12.0, "count": 2, "spread": 20.0, "width": 0.28, "homing": 6.0, "drain": 0.2, "slow": 0.6, "visual": "orb"},
+		"Versteinernder Blick", "Ein Blick, der alle Getroffenen 1,8 s erstarren lässt.", {"type": "beam", "dmg": 1100.0, "range": 10.0, "width": 0.9, "stun": 1.8}],
+	"Blitzklinge": ["Donnerschnitt", "1 Munition = 2 Schnitte, der zweite feuert eine Blitzwelle.", M([{"t": 0.0, "dir": "ltr", "dmg": 520.0, "range": 2.7, "arc": 130.0}, {"t": 0.14, "dir": "rtl", "dmg": 520.0, "range": 2.7, "arc": 130.0, "wave": {"dmg": 380.0, "range": 5.0, "width": 0.5, "speed": 18.0, "chain": 2}}]),
+		"Blitzschritt", "Blitzt zu 2 Gegnern hintereinander und betäubt sie.", {"type": "blink", "range": 9.0, "hits": 2, "dmg": 1050.0, "stun": 0.8}],
+	"Mumie Mo": ["Bandagenschlinge", "1 Munition = eine Bandage, die Gegner heranzieht.", {"type": "shot", "dmg": 700.0, "range": 6.5, "speed": 16.0, "width": 0.4, "pull": 3.0},
+		"Fluch des Pharao", "Ein Fluchfeld um ihn – und 5 s Lebensraub.", {"type": "zone", "range": 0.0, "radius": 3.5, "dur": 5.0, "dps": 480.0, "slow": 1.0, "buff_after": {"type": "buff", "dur": 5.0, "lifesteal": 0.5}}],
+	"Bärbel": ["Eisaxt", "1 Munition = ein weiter Axthieb, der verlangsamt.", M([{"t": 0.0, "dir": "ltr", "dmg": 1100.0, "range": 2.8, "arc": 170.0, "slow": 1.0}]),
+		"Bärenbrüller", "Ein Brüllen betäubt alle in der Nähe, danach +40 % Schaden.", {"type": "slam", "radius": 4.0, "dmg": 900.0, "stun": 1.0, "buff_after": {"type": "buff", "dur": 5.0, "dmg_mult": 1.4}}],
+	"Kürbiskönig": ["Kürbisbombe", "1 Munition = ein Kürbis, der in 4 Teile zerplatzt.", {"type": "lob", "dmg": 550.0, "range": 7.5, "radius": 1.2, "cluster": 4},
+		"Kürbislaterne", "Stellt eine Laterne auf, die zielsuchende Flammen schießt.", {"type": "turret", "dur": 8.0, "interval": 0.7, "dmg": 320.0, "range": 8.0, "homing": 3.0}],
+	"Seiltänzer": ["Messerjonglage", "1 Munition = 3 Messer, die wie Bumerangs zurückkehren.", {"type": "shot", "dmg": 270.0, "range": 5.5, "speed": 16.0, "count": 3, "spread": 30.0, "width": 0.22, "boomerang": true},
+		"Salto Mortale", "Springt auf Gegner, betäubt sie und verschwindet kurz.", {"type": "leap", "range": 7.0, "radius": 1.8, "dmg": 1250.0, "stun": 1.0, "buff_after": {"type": "buff", "dur": 2.0, "invis": true}}],
+	"Neptuna": ["Wasserkugel", "1 Munition = eine Wasserkugel, die in 3 Tropfen zerspritzt.", {"type": "shot", "dmg": 600.0, "range": 8.0, "speed": 12.0, "width": 0.4, "visual": "orb", "split": 3, "knock": 0.5},
+		"Mahlstrom", "Ein gewaltiger Wasserstrudel zieht Gegner in die Tiefe.", {"type": "zone", "range": 8.0, "radius": 3.5, "dur": 3.0, "dps": 600.0, "pull": 5.0}],
+	"Schrotti": ["Nagelkanone", "1 Munition = 3 Salven aus je 2 Nägeln.", {"type": "shot", "dmg": 200.0, "range": 6.0, "speed": 22.0, "count": 2, "spread": 12.0, "burst": 3, "interval": 0.08, "width": 0.2},
+		"Schrottroboter", "Baut einen Mini-Roboter mit Schnellfeuer.", {"type": "turret", "dur": 7.0, "interval": 0.35, "dmg": 180.0, "range": 7.0}],
+	"Lichtbringer": ["Heiliges Schwert", "1 Munition = ein Schlag von oben, der eine Lichtwelle aussendet.", M([{"t": 0.0, "dir": "over", "dmg": 850.0, "range": 3.0, "arc": 110.0, "wave": {"dmg": 480.0, "range": 6.0, "width": 0.7, "speed": 14.0}}]),
+		"Göttliches Urteil", "Eine Lichtsäule schlägt ein und betäubt alle.", {"type": "meteor", "range": 8.0, "count": 1, "dmg": 2500.0, "radius": 3.5, "stun": 1.0}],
+	# ---------------- Mythisch
+	"Chronos": ["Zeitkugel", "1 Munition = eine Kugel, die Gegner 2 s verlangsamt.", {"type": "shot", "dmg": 550.0, "range": 8.0, "speed": 9.0, "width": 0.5, "visual": "orb", "slow": 2.0},
+		"Zeitstillstand", "Hält die Zeit an: alle in der Nähe 2,2 s betäubt.", {"type": "slam", "radius": 5.0, "dmg": 400.0, "stun": 2.2}],
+	"Seelensammler": ["Seelensense", "1 Munition = ein riesiger Sensenhieb, der Leben raubt.", M([{"t": 0.0, "dir": "ltr", "dmg": 750.0, "range": 3.2, "arc": 200.0, "drain": 0.4}]),
+		"Seelenernte", "Zieht Seelen in einen Wirbel um ihn und raubt 5 s Leben.", {"type": "zone", "range": 0.0, "radius": 3.0, "dur": 3.0, "dps": 700.0, "pull": 3.0, "buff_after": {"type": "buff", "dur": 5.0, "lifesteal": 0.4}}],
+	"Drachenherz": ["Drachenodem", "1 Munition = ein Flammenkegel aus 5 Feuerbällen.", {"type": "shot", "dmg": 230.0, "range": 5.5, "speed": 14.0, "count": 5, "spread": 30.0, "width": 0.45, "visual": "orb"},
+		"Drachensturz", "Stürzt vom Himmel und hinterlässt ein Flammenmeer.", {"type": "leap", "range": 9.0, "radius": 3.2, "dmg": 2100.0, "zone": {"radius": 3.0, "dur": 4.0, "dps": 480.0}}],
+	"Ylva": ["Kristallsplitter", "1 Munition = ein Splitter, der durchfliegt, abprallt und verlangsamt.", {"type": "shot", "dmg": 580.0, "range": 8.0, "speed": 16.0, "width": 0.3, "pierce": true, "bounce": 2, "slow": 1.2, "visual": "orb"},
+		"Ewiger Winter", "Ein Schneesturm um sie: Schaden und extreme Verlangsamung.", {"type": "zone", "range": 0.0, "radius": 4.5, "dur": 5.0, "dps": 350.0, "slow": 3.0}],
+	"Donnerfaust": ["Donnerhammer", "1 Munition = ein Hammerschlag auf den Boden, der kurz betäubt.", {"type": "slam", "range": 2.3, "radius": 2.3, "dmg": 1000.0, "stun": 0.35},
+		"Gewittergott", "6 Blitze schlagen im Zielgebiet ein und betäuben.", {"type": "meteor", "range": 9.0, "count": 6, "dmg": 700.0, "radius": 1.4, "stun": 0.8, "interval": 0.15}],
+	"Taku": ["Iai-Schnitt", "1 Munition = ein einziger, blitzschneller Präzisionsschnitt.", M([{"t": 0.0, "dir": "thrust", "dmg": 1300.0, "range": 3.6, "arc": 35.0}]),
+		"Windschnitt-Welle", "3 Windklingen fliegen durch alles hindurch.", {"type": "fan", "count": 3, "spread": 20.0, "dmg": 1050.0, "range": 10.0, "speed": 22.0, "width": 0.6}],
+	"Grimbold": ["Zerplatzende Phiole", "1 Munition = eine Phiole, die in 5 Giftspritzer zerplatzt.", {"type": "shot", "dmg": 420.0, "range": 6.5, "speed": 11.0, "width": 0.35, "visual": "orb", "split": 5, "slow": 0.5},
+		"Transmutation", "Verwandelt sich: 40 % Heilung, +50 % Schaden, Lebensraub.", {"type": "buff", "dur": 6.0, "heal": 0.4, "dmg_mult": 1.5, "lifesteal": 0.3}],
+	"Tiefseeauge": ["Tiefenstrahl", "1 Munition = ein extrem weiter Strahl mit Rückstoß.", {"type": "beam", "dmg": 950.0, "range": 12.0, "width": 0.25, "knock": 2.0},
+		"Auge des Abgrunds", "Öffnet einen Abgrund, der alles hineinzieht.", {"type": "zone", "range": 10.0, "radius": 4.0, "dur": 2.5, "dps": 900.0, "pull": 6.0}],
+	"Waldgeist": ["Rankenpfeil", "1 Munition = ein durchschlagender Pfeil, der heilt und verlangsamt.", {"type": "shot", "dmg": 560.0, "range": 9.0, "speed": 18.0, "width": 0.28, "pierce": true, "drain": 0.25, "slow": 0.8},
+		"Ruf des Waldes", "6 Waldgeister umkreisen ihn, dazu 40 % Heilung.", {"type": "orbit", "count": 6, "dmg": 300.0, "dur": 8.0, "radius": 2.0, "buff_after": {"type": "buff", "dur": 2.0, "heal": 0.4}}],
+	"Stahlkoloss": ["Gatling", "1 Munition = 6 Schüsse in schneller Folge.", {"type": "shot", "dmg": 160.0, "range": 7.0, "speed": 24.0, "burst": 6, "interval": 0.06, "width": 0.2},
+		"Raketenhagel", "8 Raketen schlagen ein und zerstören Kisten.", {"type": "meteor", "range": 9.0, "count": 8, "dmg": 550.0, "radius": 1.4, "interval": 0.1, "break": true}],
+	"Mondwolf": ["Mondklaue", "1 Munition = 2 Klauenhiebe, die Leben rauben.", M([{"t": 0.0, "dir": "ltr", "dmg": 520.0, "range": 2.4, "arc": 120.0, "drain": 0.25}, {"t": 0.1, "dir": "rtl", "dmg": 520.0, "range": 2.4, "arc": 120.0, "drain": 0.25}]),
+		"Blutmond", "6 s Raserei: +60 % Schaden, Tempo und Lebensraub.", {"type": "buff", "dur": 6.0, "dmg_mult": 1.6, "speed": true, "lifesteal": 0.4}],
+	"Glockenspiel": ["Glockenschlag", "1 Munition = ein Glockenschlag, der ringsum verlangsamt.", {"type": "slam", "range": 2.6, "radius": 2.6, "dmg": 620.0, "slow": 0.8},
+		"Wiegenlied", "Eine Melodie: heilt Verbündete und lässt Gegner einschlafen (langsam).", {"type": "zone", "range": 0.0, "radius": 4.0, "dur": 5.0, "slow": 1.5, "heal": 0.1}],
+	"Erdbeben-Kalle": ["Bohrkanone", "1 Munition = ein Bohrer, der durch Gegner und Kisten bohrt.", {"type": "shot", "dmg": 780.0, "range": 9.0, "speed": 15.0, "width": 0.45, "pierce": true, "break": true, "visual": "orb"},
+		"Grubenbeben", "4 Erdbebenwellen, die alles zerstören.", {"type": "slam", "waves": 4, "radius": 2.0, "dmg": 620.0, "knock": 1.0, "break": true}],
+	# ---------------- Legendär
+	"Aurelia": ["Sonnenklinge", "1 Munition = 3 Hiebe, der letzte schießt eine Sonnenwelle.", M([{"t": 0.0, "dir": "ltr", "dmg": 520.0, "range": 2.8, "arc": 130.0}, {"t": 0.11, "dir": "rtl", "dmg": 520.0, "range": 2.8, "arc": 130.0}, {"t": 0.24, "dir": "over", "dmg": 600.0, "range": 3.0, "arc": 100.0, "wave": {"dmg": 600.0, "range": 7.0, "width": 0.6, "speed": 16.0}}]),
+		"Sonnenaufgang", "20 Sonnenstrahlen in alle Richtungen (2 Wellen), dazu 30 % Heilung.", {"type": "nova", "dmg": 450.0, "range": 7.0, "speed": 13.0, "count": 20, "burst": 2, "width": 0.3, "buff_after": {"type": "buff", "dur": 2.0, "heal": 0.3}}],
+	"Kaiser Frost": ["Kaiserhieb", "1 Munition = ein gewaltiger Hieb, der verlangsamt und wegschleudert.", M([{"t": 0.0, "dir": "over", "dmg": 1300.0, "range": 2.8, "arc": 140.0, "slow": 1.2, "knock": 1.2}]),
+		"Thron aus Eis", "Eisexplosion: betäubt 1,5 s und lässt ein Eisfeld entstehen.", {"type": "slam", "radius": 4.5, "dmg": 1200.0, "stun": 1.5, "buff_after": {"type": "zone", "range": 0.0, "radius": 4.0, "dur": 4.0, "slow": 2.0}}],
+	"Zephyra": ["Wirbelklingen", "1 Munition = 4 Windklingen, die zurückkehren.", {"type": "shot", "dmg": 300.0, "range": 7.0, "speed": 16.0, "count": 4, "spread": 40.0, "width": 0.25, "boomerang": true, "knock": 0.6},
+		"Orkanring", "3 Ringe aus Windklingen schleudern alles weg.", {"type": "nova", "dmg": 380.0, "range": 7.0, "speed": 14.0, "count": 12, "burst": 3, "width": 0.35, "knock": 2.0}],
+	"Infernus": ["Höllensense", "1 Munition = 2 riesige Sensenhiebe.", M([{"t": 0.0, "dir": "ltr", "dmg": 650.0, "range": 3.2, "arc": 240.0}, {"t": 0.2, "dir": "rtl", "dmg": 650.0, "range": 3.2, "arc": 240.0}]),
+		"Höllentor", "Öffnet ein Höllenfeld um sich: +50 % Schaden und Lebensraub.", {"type": "zone", "range": 0.0, "radius": 4.0, "dur": 5.0, "dps": 780.0, "buff_after": {"type": "buff", "dur": 5.0, "dmg_mult": 1.5, "lifesteal": 0.3}}],
+	"Leviathan": ["Tiefseebombe", "1 Munition = eine Bombe, die abprallt und explodiert.", {"type": "shot", "dmg": 950.0, "range": 9.0, "speed": 10.0, "width": 0.55, "visual": "orb", "bounce": 1, "explode": 1.6, "knock": 1.5},
+		"Zorn der Tiefe", "Eine titanische Flutwelle, die Kisten zerstört.", {"type": "wave", "dmg": 2100.0, "range": 11.0, "width": 3.0, "speed": 9.0, "pierce": true, "knock": 4.0, "break": true}],
+	"Astra": ["Sternenpfeil", "1 Munition = 3 zielsuchende Sterne, die beschleunigen.", {"type": "shot", "dmg": 320.0, "range": 9.0, "speed": 10.0, "count": 3, "spread": 25.0, "width": 0.28, "homing": 4.0, "accel": 1.0, "visual": "orb"},
+		"Schwarzes Loch", "Ein schwarzes Loch saugt alles ein und zermalmt es.", {"type": "zone", "range": 8.0, "radius": 4.0, "dur": 3.5, "dps": 900.0, "pull": 7.0}],
+	"Echo": ["Echoschnitt", "1 Munition = blitzt zum nächsten Gegner und schneidet.", {"type": "blink", "range": 5.0, "dmg": 900.0},
+		"Tausendfaches Echo", "Springt 6-mal zwischen Gegnern hin und her.", {"type": "blink", "range": 7.0, "hits": 6, "dmg": 600.0, "stun": 0.2}],
+	"Titania": ["Feenlicht", "1 Munition = ein Lichtball, der verfolgt, abprallt und heilt.", {"type": "shot", "dmg": 500.0, "range": 8.5, "speed": 12.0, "width": 0.35, "homing": 3.0, "bounce": 1, "drain": 0.3, "visual": "orb"},
+		"Feenring", "6 Feen umkreisen sie, dazu ein Heilkreis.", {"type": "orbit", "count": 6, "dmg": 350.0, "dur": 6.0, "radius": 2.0, "buff_after": {"type": "zone", "range": 0.0, "radius": 3.5, "dur": 5.0, "heal": 0.12}}],
+	}

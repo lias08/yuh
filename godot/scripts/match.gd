@@ -316,6 +316,8 @@ func nearest_enemy(f: Fighter):
 	var best = null
 	var bd := 1e9
 	for t in _targets(f):
+		if t.has("fighter") and t.fighter.invisible():
+			continue
 		var d: float = (t.pos - f.position).length()
 		if d < bd:
 			bd = d
@@ -324,6 +326,9 @@ func nearest_enemy(f: Fighter):
 
 func super_range(f: Fighter) -> float:
 	var s: Dictionary = f.form().super
+	# Fähigkeiten rund um den Brawler: Bots setzen sie ein, wenn Gegner nah sind
+	if s.get("type", "") in ["spin", "slam", "buff", "orbit"] or (s.get("type", "") == "zone" and s.get("range", 1.0) <= 0.5):
+		return s.get("radius", 2.5) + 1.5
 	return s.get("range", 8.0)
 
 func _spawn_dummy(pos: Vector3, kind: String) -> void:
@@ -395,6 +400,8 @@ func melee_swing(f: Fighter, step: Dictionary) -> void:
 		if dist > 0.3 and rad_to_deg(f.aim_dir.angle_to(to)) > step.arc * 0.5 + 10.0:
 			continue
 		_damage_dummy(d, step.dmg, f, fx_of(step), origin)
+		if step.get("drain", 0.0) > 0.0:
+			f.heal(step.dmg * step.drain)
 		hits += 1
 	if step.get("break", false):
 		break_walls(origin + f.aim_dir * step.range * 0.6, step.range * 0.6)
@@ -440,12 +447,14 @@ func _spawn_projectile(f: Fighter, dir: Vector3, dmg: float, rng: float, speed: 
 			core.scale = Vector3.ONE * width * 1.3
 			_glow_sprite(mi, Color(color.r, color.g, color.b, 0.85), width * 4.0)
 	mi.set_meta("trail", _trail(mi, color, width * 2.2))
-	mi.position = f.position + Vector3(0, 0.75, 0) + dir * 0.6
+	var origin: Vector3 = spec.get("origin", f.position)
+	mi.position = origin + Vector3(0, 0.75, 0) + dir * 0.6
 	mi.rotation.y = atan2(-dir.x, -dir.z)
 	add_child(mi)
 	waves.append({"node": mi, "dir": dir, "speed": speed, "range": rng, "travel": 0.0, "dmg": dmg, "width": width,
 		"hit": [], "pierce": pierce, "explode": explode, "color": color, "owner": f, "visual": visual,
-		"fx": fx_of(spec), "breaks": spec.get("break", false)})
+		"fx": fx_of(spec), "breaks": spec.get("break", false), "spec": spec, "bounces": int(spec.get("bounce", 0)),
+		"returning": false, "base_width": width, "core": core})
 	return mi
 
 func _orb() -> SphereMesh:
@@ -477,7 +486,7 @@ func _volley(f: Fighter, s: Dictionary, dir: Vector3, is_super: bool) -> void:
 	for i in n:
 		var a: float = lerp(-spread / 2.0, spread / 2.0, float(i) / (n - 1)) if n > 1 else 0.0
 		var d := dir.rotated(Vector3.UP, deg_to_rad(a))
-		_spawn_projectile(f, d, s.dmg, s.range, s.speed, s.get("width", 0.25), s.color, s.get("pierce", false), 0.0, s.get("visual", "bullet"), s)
+		_spawn_projectile(f, d, s.dmg, s.range, s.speed, s.get("width", 0.25), s.color, s.get("pierce", false), s.get("explode", 0.0), s.get("visual", "bullet"), s)
 	_burst(f.position + Vector3(0, 0.8, 0) + dir * 0.8, s.color, 8, 3.0, 0.08)
 	Game.play_sfx("shot", 0.7 if is_super else 0.5, 0.8 if n > 2 else 1.1)
 
@@ -500,7 +509,7 @@ func throw_lob(f: Fighter, s: Dictionary, dir: Vector3, is_super: bool) -> void:
 	var start := f.position + Vector3(0, 1.0, 0)
 	lobs.append({"node": bomb, "marker": marker, "start": start, "target": target, "t": 0.0,
 		"dur": clamp(dist / 9.0, 0.45, 1.0), "dmg": s.dmg, "radius": s.radius, "color": s.color, "owner": f, "height": 1.8 + dist * 0.2,
-		"fx": fx_of(s), "breaks": s.get("break", false)})
+		"fx": fx_of(s), "breaks": s.get("break", false), "spec": s})
 	_trail(bomb, Color(1, 0.7, 0.3), 0.5)
 	Game.play_sfx("swoosh", 0.7, 0.8)
 
@@ -514,7 +523,19 @@ func _update_lobs(delta: float) -> void:
 		l.node.position = p
 		l.node.rotate_x(delta * 8.0)
 		if k >= 1.0:
-			_explode(l.target, l.radius, l.dmg, l.color, l.owner, l.fx, l.breaks)
+			var lsp: Dictionary = l.get("spec", {})
+			if lsp.get("mine", false):
+				_place_mine(l.owner, l.target, lsp)
+			else:
+				_explode(l.target, l.radius, l.dmg, l.color, l.owner, l.fx, l.breaks)
+				if lsp.has("zone") and is_instance_valid(l.owner):
+					spawn_zone(l.owner, l.target, lsp.zone, l.color)
+				if lsp.get("cluster", 0) > 0 and is_instance_valid(l.owner):
+					for c in int(lsp.cluster):
+						var cp: Vector3 = l.target + Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)).normalized() * randf_range(1.2, 2.2)
+						var lo: Fighter = l.owner
+						get_tree().create_timer(0.15 + c * 0.12, false).timeout.connect(func():
+							_explode(cp, 1.0, l.dmg * 0.35, l.color, lo, l.fx, false))
 			l.node.queue_free()
 			l.marker.queue_free()
 			lobs.remove_at(i)
@@ -607,7 +628,7 @@ func use_gadget(f: Fighter, g: Dictionary) -> void:
 			tr.position = Vector3(0, 0.5, 0)
 			fx.append({"node": tr, "t": 0.0, "dur": g.get("duration", 3.0), "kind": "particles"})
 	Game.play_sfx("ready", 0.8, 1.3)
-	show_banner(f.form().name.to_upper() if g.type == "swap" else g.name.to_upper())
+	# Keine Fähigkeitsnamen im Match einblenden (nur der Effekt)
 
 func charge_effect(f: Fighter, sup: Dictionary) -> void:
 	Game.play_sfx("charge", 1.0)
@@ -619,6 +640,11 @@ func charge_effect(f: Fighter, sup: Dictionary) -> void:
 	_shake = 0.2
 
 func _damage_dummy(d: Dictionary, amount: float, f: Fighter, efx: Dictionary = {}, from := Vector3.INF) -> void:
+	if f != null and is_instance_valid(f):
+		amount *= f.damage_mult()
+		var ls: float = f.lifesteal_now()
+		if ls > 0.0 and f.alive:
+			f.heal(amount * ls)
 	if d.has("fighter"):
 		_damage_fighter(d.fighter, amount, f, efx, from)
 		return
@@ -763,6 +789,482 @@ func _explode(pos: Vector3, radius: float, dmg: float, color: Color, f: Fighter,
 	_shake = 0.6
 	Game.play_sfx("explosion", 1.0)
 
+
+# ==================================================================== Fähigkeiten (erweitert)
+# Jede Angriffs-/Super-Art mit eigenem Verhalten. Typen:
+#  beam (Laserstrahl), zone (Bodenfeld: Schaden/Verlangsamen/Sog/Heilung), turret (Geschütz),
+#  orbit (kreisende Kugeln), mine (Mine), spin (Wirbelwind), leap (Sprung mit Einschlag),
+#  blink (Blitzangriff auf Gegner), slam (Bodenstoß-Wellen), buff (Selbst-Verstärkung),
+#  meteor (Einschläge von oben), barrier (temporäre Mauer), fan (mehrere Klingenwellen)
+var zones: Array = []
+var turrets: Array = []
+var orbits: Array = []
+var mines: Array = []
+var spins: Array = []
+var leaps: Array = []
+
+func ability(f: Fighter, s: Dictionary, dir: Vector3, is_super: bool) -> void:
+	match s.type:
+		"beam": fire_beam(f, s, dir)
+		"zone": spawn_zone(f, _aim_point(f, s, dir), s, s.color)
+		"turret": _spawn_turret(f, s, dir)
+		"orbit": _spawn_orbit(f, s)
+		"mine": _place_mine(f, f.position + dir * s.get("range", 1.0), s)
+		"spin": _start_spin(f, s)
+		"leap": _start_leap(f, s, dir)
+		"blink": _blink_strike(f, s, dir)
+		"slam": _slam(f, s)
+		"buff": _apply_buff(f, s)
+		"meteor": _meteor(f, s, dir)
+		"barrier": _barrier(f, s, dir)
+		"fan":
+			var n: int = int(s.get("count", 3))
+			var spread: float = s.get("spread", 30.0)
+			for i in n:
+				var a: float = lerp(-spread / 2.0, spread / 2.0, float(i) / max(1, n - 1))
+				var d := dir.rotated(Vector3.UP, deg_to_rad(a))
+				_spawn_projectile(f, d, s.dmg, s.range, s.speed, s.get("width", 0.6), s.color, s.get("pierce", true), s.get("explode", 0.0), "crescent", s)
+			Game.play_sfx("wave", 0.7, 1.1)
+	if is_super:
+		_shake = max(_shake, 0.2)
+
+func _aim_point(f: Fighter, s: Dictionary, dir: Vector3) -> Vector3:
+	var dist: float = clamp(s.get("range", 6.0) * _aim_frac, 0.0, s.get("range", 6.0)) if f == player else s.get("range", 6.0) * 0.8
+	var nearest = nearest_enemy(f)
+	if f != player and nearest != null:
+		dist = min(dist, (nearest.pos - f.position).length())
+	var p: Vector3 = f.position + dir * dist
+	return Vector3(clamp(p.x, -ARENA_W / 2 + 0.5, ARENA_W / 2 - 0.5), 0, clamp(p.z, -ARENA_H / 2 + 0.5, ARENA_H / 2 - 0.5))
+
+## Strahl: trifft sofort alles auf einer Linie (bis zur ersten Wand).
+func fire_beam(f: Fighter, s: Dictionary, dir: Vector3) -> void:
+	var rng: float = s.range
+	var t := 0.0
+	while t < rng:
+		if blocked(f.position + dir * (t + 0.25)):
+			var blk := _block_at(f.position + dir * (t + 0.25))
+			if s.get("break", false) and not blk.is_empty() and blk.breakable:
+				break_walls(f.position + dir * (t + 0.25), 0.4)
+			else:
+				break
+		t += 0.25
+	var a: Vector3 = f.position
+	var b: Vector3 = f.position + dir * t
+	for d in _targets(f):
+		if _seg_dist_xz(d.pos, a, b) <= s.get("width", 0.4) + d.radius:
+			_damage_dummy(d, s.dmg, f, fx_of(s), a)
+			if s.get("drain", 0.0) > 0.0:
+				f.heal(s.dmg * s.drain)
+			if s.get("chain", 0) > 0:
+				_chain_lightning(d, int(s.chain), s.dmg * 0.5, s.color, f, fx_of(s))
+	_beam_fx(a + Vector3(0, 0.8, 0) + dir * 0.5, b + Vector3(0, 0.8, 0), s.color, s.get("width", 0.4), 0.3)
+	_burst(b + Vector3(0, 0.8, 0), s.color, 14, 4.0, 0.14)
+	Game.play_sfx("wave", 0.7, 1.6)
+
+func _beam_fx(a: Vector3, b: Vector3, color: Color, width: float, dur: float) -> void:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(1, 1, 1)
+	mi.mesh = bm
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.albedo_color = Color(color.r, color.g, color.b, 0.9)
+	mi.material_override = m
+	var len: float = max(0.05, (b - a).length())
+	add_child(mi)
+	mi.global_position = (a + b) / 2.0
+	if len > 0.06:
+		mi.look_at(b, Vector3.UP if abs((b - a).normalized().y) < 0.95 else Vector3.RIGHT)
+	mi.scale = Vector3(width * 1.2, width * 0.6, len)
+	var core := MeshInstance3D.new()
+	core.mesh = bm
+	var cm := m.duplicate() as StandardMaterial3D
+	cm.albedo_color = Color(1, 1, 1, 0.9)
+	core.material_override = cm
+	core.scale = Vector3(0.35, 0.35, 1.0)
+	mi.add_child(core)
+	fx.append({"node": mi, "t": 0.0, "dur": dur, "kind": "beam", "w": width})
+
+## Bodenzone: Schaden pro Sekunde, Verlangsamen, Sog zur Mitte, Heilung für das eigene Team.
+func spawn_zone(f: Fighter, pos: Vector3, z: Dictionary, color: Color) -> void:
+	var mi := MeshInstance3D.new()
+	mi.mesh = _sector_mesh(1.0, 359.9, 0.0)
+	mi.material_override = _fx_mat(Color(color.r, color.g, color.b, 0.28))
+	mi.position = pos + Vector3(0, 0.05, 0)
+	mi.scale = Vector3.ONE * z.radius
+	add_child(mi)
+	var edge := MeshInstance3D.new()
+	edge.mesh = _sector_mesh(1.0, 359.9, 0.9)
+	edge.material_override = _fx_mat(Color(color.r, color.g, color.b, 0.7))
+	edge.position = Vector3(0, 0.01, 0)
+	mi.add_child(edge)
+	zones.append({"node": mi, "pos": pos, "radius": z.radius, "t": 0.0, "dur": z.get("dur", 3.0), "dps": z.get("dps", 0.0),
+		"slow": z.get("slow", 0.0), "pull": z.get("pull", 0.0), "heal": z.get("heal", 0.0), "stun": z.get("stun", 0.0),
+		"owner": f, "color": color, "tick": 0.0})
+	_ring_fx(pos, z.radius, color, 0.35)
+
+func _update_zones(delta: float) -> void:
+	for i in range(zones.size() - 1, -1, -1):
+		var z: Dictionary = zones[i]
+		z.t += delta
+		z.tick -= delta
+		var owner_f: Fighter = z.owner if is_instance_valid(z.owner) else null
+		(z.node as Node3D).rotate_y(delta * (3.0 if z.pull > 0.0 else 0.6))
+		if z.pull > 0.0 and owner_f != null:
+			for d in _targets(owner_f):
+				var to: Vector3 = z.pos - d.pos
+				to.y = 0
+				if to.length() < z.radius + 0.5 and to.length() > 0.3:
+					_push(d, to.normalized() * min(z.pull * delta, to.length()))
+		if z.tick <= 0.0:
+			z.tick = 0.5
+			if owner_f != null:
+				for d in _targets(owner_f):
+					if (d.pos - z.pos).length() <= z.radius + d.radius:
+						if z.dps > 0.0:
+							_damage_dummy(d, z.dps * 0.5, owner_f, {"slow": z.slow, "stun": z.stun}, z.pos)
+						elif z.slow > 0.0:
+							_damage_dummy(d, 0.0, owner_f, {"slow": z.slow}, z.pos)
+				if z.heal > 0.0:
+					for o in fighters:
+						if o.alive and o.team == owner_f.team and (o.position - z.pos).length() <= z.radius:
+							o.heal(o.max_hp * z.heal * 0.5)
+							_damage_number(o.position + Vector3(0, 2.6, 0), o.max_hp * z.heal * 0.5, Color(0.4, 1.0, 0.5))
+			_burst(z.pos + Vector3(0, 0.3, 0), z.color, 6, -2.0 if z.pull > 0.0 else 1.5, 0.18)
+		if z.t >= z.dur:
+			z.node.queue_free()
+			zones.remove_at(i)
+
+## Geschütz: schießt eine Weile selbstständig auf Gegner in Reichweite.
+func _spawn_turret(f: Fighter, s: Dictionary, dir: Vector3) -> void:
+	var pos: Vector3 = move_circle(f.position, dir * 1.4, 0.4)
+	var root := Node3D.new()
+	root.position = pos
+	add_child(root)
+	ModelBuilder.part(root, "cyl", Vector3(0, 0.25, 0), Vector3(0.7, 0.5, 0.7), Color(0.35, 0.35, 0.42))
+	ModelBuilder.part(root, "sphere", Vector3(0, 0.75, 0), Vector3.ONE * 0.6, s.color)
+	var barrel := ModelBuilder.pivot(root, "Barrel", Vector3(0, 0.75, 0))
+	ModelBuilder.part(barrel, "cyl", Vector3(0, 0, -0.4), Vector3(0.16, 0.6, 0.16), Color(0.2, 0.2, 0.25), Vector3(90, 0, 0))
+	ModelBuilder.merge_tree(root)
+	turrets.append({"node": root, "barrel": barrel, "pos": pos, "t": 0.0, "dur": s.get("dur", 8.0), "cd": 0.0,
+		"interval": s.get("interval", 0.6), "spec": s, "owner": f})
+	_ring_fx(pos, 1.2, s.color, 0.3)
+	Game.play_sfx("ready", 0.7, 0.8)
+
+func _update_turrets(delta: float) -> void:
+	for i in range(turrets.size() - 1, -1, -1):
+		var t: Dictionary = turrets[i]
+		t.t += delta
+		t.cd -= delta
+		var owner_f: Fighter = t.owner if is_instance_valid(t.owner) else null
+		if owner_f != null and t.cd <= 0.0:
+			var best = null
+			var bd: float = t.spec.get("range", 7.0)
+			for d in _targets(owner_f):
+				var dist: float = (d.pos - t.pos).length()
+				if dist < bd:
+					bd = dist; best = d
+			if best != null:
+				t.cd = t.interval
+				var dir: Vector3 = best.pos - t.pos; dir.y = 0; dir = dir.normalized()
+				(t.barrel as Node3D).rotation.y = atan2(-dir.x, -dir.z)
+				var sp: Dictionary = t.spec.duplicate()
+				sp["origin"] = t.pos
+				_spawn_projectile(owner_f, dir, sp.dmg, sp.get("range", 7.0) + 1.0, sp.get("speed", 16.0), 0.22, sp.color, false, 0.0, "bullet", sp)
+				Game.play_sfx("shot", 0.3, 1.4)
+		if t.t >= t.dur or owner_f == null:
+			_burst(t.pos + Vector3(0, 0.6, 0), Color(0.6, 0.6, 0.65), 16, 4.0, 0.2)
+			t.node.queue_free()
+			turrets.remove_at(i)
+
+## Kreisende Kugeln um den Brawler (Schaden bei Berührung).
+func _spawn_orbit(f: Fighter, s: Dictionary) -> void:
+	var nodes := []
+	for k in int(s.get("count", 3)):
+		var mi := MeshInstance3D.new()
+		mi.mesh = _orb()
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.albedo_color = s.color.lerp(Color.WHITE, 0.4)
+		mi.material_override = m
+		mi.scale = Vector3.ONE * 0.45
+		_glow_sprite(mi, Color(s.color.r, s.color.g, s.color.b, 0.8), 1.6)
+		add_child(mi)
+		nodes.append(mi)
+	orbits.append({"owner": f, "nodes": nodes, "t": 0.0, "dur": s.get("dur", 6.0), "radius": s.get("radius", 1.8),
+		"dmg": s.dmg, "hitcd": {}, "fx": fx_of(s), "color": s.color, "speed": s.get("spin_speed", 4.0)})
+
+func _update_orbits(delta: float) -> void:
+	for i in range(orbits.size() - 1, -1, -1):
+		var o: Dictionary = orbits[i]
+		o.t += delta
+		var f: Fighter = o.owner if is_instance_valid(o.owner) else null
+		var n: int = o.nodes.size()
+		for k in n:
+			var a: float = o.t * o.speed + TAU * k / n
+			var p: Vector3 = (f.position if f != null else Vector3.ZERO) + Vector3(cos(a), 0.0, sin(a)) * o.radius + Vector3(0, 0.9, 0)
+			(o.nodes[k] as Node3D).position = p
+			if f != null and f.alive:
+				for d in _targets(f):
+					var key: int = hash(d)
+					if o.hitcd.get(key, 0.0) > o.t:
+						continue
+					if Vector2(d.pos.x - p.x, d.pos.z - p.z).length() < 0.5 + d.radius:
+						o.hitcd[key] = o.t + 0.5
+						_damage_dummy(d, o.dmg, f, o.fx, p)
+						_burst(p, o.color, 8, 3.0, 0.1)
+		if o.t >= o.dur or f == null or not f.alive:
+			for nd in o.nodes:
+				_burst((nd as Node3D).position, o.color, 6, 2.0, 0.1)
+				nd.queue_free()
+			orbits.remove_at(i)
+
+## Mine: liegt still, explodiert, sobald ein Gegner nahe kommt.
+func _place_mine(f: Fighter, pos: Vector3, s: Dictionary) -> void:
+	pos = Vector3(clamp(pos.x, -ARENA_W / 2 + 0.5, ARENA_W / 2 - 0.5), 0, clamp(pos.z, -ARENA_H / 2 + 0.5, ARENA_H / 2 - 0.5))
+	var own: Array = mines.filter(func(m): return m.owner == f)
+	if own.size() >= 4:
+		own[0].node.queue_free()
+		mines.erase(own[0])
+	var root := Node3D.new()
+	root.position = pos
+	add_child(root)
+	ModelBuilder.part(root, "cyl", Vector3(0, 0.08, 0), Vector3(0.6, 0.16, 0.6), Color(0.25, 0.25, 0.3))
+	ModelBuilder.part(root, "sphere", Vector3(0, 0.18, 0), Vector3(0.22, 0.12, 0.22), s.color, Vector3.ZERO, false)
+	ModelBuilder.merge_tree(root)
+	mines.append({"node": root, "pos": pos, "owner": f, "t": 0.0, "dmg": s.dmg, "radius": s.get("radius", 1.6),
+		"fx": fx_of(s), "color": s.color, "spec": s})
+
+func _update_mines(delta: float) -> void:
+	for i in range(mines.size() - 1, -1, -1):
+		var m: Dictionary = mines[i]
+		m.t += delta
+		var f: Fighter = m.owner if is_instance_valid(m.owner) else null
+		var trigger: bool = m.t > 14.0 or f == null
+		if f != null and m.t > 0.4:
+			for d in _targets(f):
+				if (d.pos - m.pos).length() < 1.0 + d.radius:
+					trigger = true
+					break
+		(m.node as Node3D).scale = Vector3.ONE * (1.0 + sin(m.t * 6.0) * 0.06)
+		if trigger:
+			if f != null:
+				_explode(m.pos, m.radius, m.dmg, m.color, f, m.fx, m.spec.get("break", false))
+				if m.spec.has("zone"):
+					spawn_zone(f, m.pos, m.spec.zone, m.color)
+			m.node.queue_free()
+			mines.remove_at(i)
+
+## Wirbelwind: trifft ringsum mehrmals, während man sich bewegt.
+func _start_spin(f: Fighter, s: Dictionary) -> void:
+	spins.append({"owner": f, "t": 0.0, "dur": s.get("dur", 2.0), "tick": 0.0, "radius": s.get("radius", 2.2), "dmg": s.dmg,
+		"fx": fx_of(s), "color": s.color, "speed_buff": s.get("speed_buff", true)})
+	if s.get("speed_buff", true):
+		f.speed_until = max(f.speed_until, f.now() + s.get("dur", 2.0))
+
+func _update_spins(delta: float) -> void:
+	for i in range(spins.size() - 1, -1, -1):
+		var sp: Dictionary = spins[i]
+		sp.t += delta
+		sp.tick -= delta
+		var f: Fighter = sp.owner if is_instance_valid(sp.owner) else null
+		if f == null or not f.alive or sp.t >= sp.dur:
+			spins.remove_at(i)
+			continue
+		f.rig.root.rotation.y += delta * 18.0
+		if sp.tick <= 0.0:
+			sp.tick = 0.25
+			for d in _targets(f):
+				if (d.pos - f.position).length() <= sp.radius + d.radius:
+					_damage_dummy(d, sp.dmg, f, sp.fx, f.position)
+			_slash_fx(f.position, f.aim_dir.rotated(Vector3.UP, sp.t * 9.0), sp.radius, 300.0, sp.color, "ltr")
+			Game.play_sfx("swoosh", 0.4, 1.3)
+
+## Sprung: fliegt im Bogen zum Zielpunkt und schlägt dort ein.
+func _start_leap(f: Fighter, s: Dictionary, dir: Vector3) -> void:
+	var target: Vector3 = _aim_point(f, s, dir)
+	leaps.append({"owner": f, "from": f.position, "to": target, "t": 0.0, "dur": s.get("dur", 0.55), "spec": s})
+	f._rooted_until = f.now() + s.get("dur", 0.55) + 0.1
+	_trail(f, s.color, 0.8).set_meta("dash_trail", true)
+	Game.play_sfx("charge", 0.6, 1.6)
+
+func _update_leaps(delta: float) -> void:
+	for i in range(leaps.size() - 1, -1, -1):
+		var l: Dictionary = leaps[i]
+		var f: Fighter = l.owner if is_instance_valid(l.owner) else null
+		if f == null:
+			leaps.remove_at(i)
+			continue
+		l.t += delta
+		var k: float = clamp(l.t / l.dur, 0.0, 1.0)
+		f.position = l.from.lerp(l.to, k)
+		f.rig.root.position.y = sin(k * PI) * 2.2
+		if k >= 1.0:
+			f.rig.root.position.y = 0.0
+			f.position = resolve_circle(f.position, f.radius)
+			var s: Dictionary = l.spec
+			_explode(f.position, s.get("radius", 2.4), s.dmg, s.color, f, fx_of(s), s.get("break", false))
+			if s.has("zone"):
+				spawn_zone(f, f.position, s.zone, s.color)
+			for c in f.get_children():
+				if c is CPUParticles3D and c.has_meta("dash_trail"):
+					c.emitting = false
+					c.reparent(self)
+					fx.append({"node": c, "t": 0.0, "dur": 0.5, "kind": "particles"})
+			leaps.remove_at(i)
+
+## Blitzangriff: teleportiert zu Gegnern im Zielbereich und schlägt zu (mehrere Sprünge möglich).
+func _blink_strike(f: Fighter, s: Dictionary, dir: Vector3) -> void:
+	var hits: int = int(s.get("hits", 1))
+	var used: Array = []
+	for h in hits:
+		var delay: float = h * 0.18
+		get_tree().create_timer(delay + 0.01, false).timeout.connect(func():
+			if not f.alive: return
+			var best = null
+			var bd: float = s.range
+			for d in _targets(f):
+				if d in used:
+					continue
+				var to: Vector3 = d.pos - f.position
+				to.y = 0
+				if to.length() < bd and (h > 0 or to.length() < 1.0 or dir.angle_to(to) < 0.9):
+					bd = to.length(); best = d
+			_burst(f.position + Vector3(0, 0.9, 0), s.color, 14, 3.0, 0.15)
+			if best == null:
+				if h == 0:
+					f.position = move_circle(f.position, dir * s.range * 0.6, f.radius)
+				return
+			used.append(best)
+			var to2: Vector3 = best.pos - f.position
+			to2.y = 0
+			f.position = move_circle(f.position, to2 - to2.normalized() * 0.9, f.radius)
+			f.aim_dir = to2.normalized()
+			_damage_dummy(best, s.dmg, f, fx_of(s), f.position)
+			_slash_fx(f.position, f.aim_dir, 2.0, 120.0, s.color, "ltr" if h % 2 == 0 else "rtl")
+			_burst(best.pos + Vector3(0, 1.0, 0), s.color, 18, 5.0, 0.15)
+			Game.play_sfx("swoosh", 0.7, 1.4))
+
+## Bodenstoß: eine oder mehrere Druckwellen um den Brawler.
+func _slam(f: Fighter, s: Dictionary) -> void:
+	var n: int = int(s.get("waves", 1))
+	for k in n:
+		get_tree().create_timer(k * 0.3 + 0.01, false).timeout.connect(func():
+			if not f.alive: return
+			var r: float = s.get("radius", 2.5) * (1.0 + k * 0.45)
+			for d in _targets(f):
+				if (d.pos - f.position).length() <= r + d.radius:
+					_damage_dummy(d, s.dmg, f, fx_of(s), f.position)
+			if s.get("break", false):
+				break_walls(f.position, r)
+			_ring_fx(f.position, r, s.color, 0.35)
+			_burst(f.position + Vector3(0, 0.3, 0), s.color, 24, 6.0, 0.2)
+			_shake = max(_shake, 0.3)
+			Game.play_sfx("explosion", 0.6, 1.2))
+
+## Selbst-Verstärkung: mehr Schaden, Tempo, Lebensraub, Schild, Unsichtbarkeit, Sofortheilung.
+func _apply_buff(f: Fighter, s: Dictionary) -> void:
+	var dur: float = s.get("dur", 4.0)
+	var now: float = f.now()
+	if s.get("dmg_mult", 1.0) > 1.0:
+		f.dmg_mult = s.dmg_mult
+		f.dmg_mult_until = now + dur
+	if s.get("speed", false):
+		f.speed_until = max(f.speed_until, now + dur)
+	if s.get("lifesteal", 0.0) > 0.0:
+		f.lifesteal = s.lifesteal
+		f.lifesteal_until = now + dur
+	if s.get("shield", false):
+		f.shield_until = max(f.shield_until, now + dur)
+	if s.get("invis", false):
+		f.invis_until = now + dur
+	if s.get("heal", 0.0) > 0.0:
+		f.heal(f.max_hp * s.heal)
+		_damage_number(f.position + Vector3(0, 2.6, 0), f.max_hp * s.heal, Color(0.4, 1.0, 0.5))
+	if s.get("reload", false):
+		f.ammo = float(f.def.ammo)
+	if s.get("dmg", 0.0) > 0.0:
+		_explode(f.position, s.get("radius", 2.5), s.dmg, s.color, f, fx_of(s), false)
+	f.buff_color = s.color
+	f.buff_until = now + dur
+	_ring_fx(f.position, 2.2, s.color, 0.4)
+	_burst(f.position + Vector3(0, 1.0, 0), s.color, 30, 5.0, 0.2)
+	Game.play_sfx("transform", 0.6, 1.4)
+
+## Meteoriten: mehrere Einschläge von oben im Zielgebiet.
+func _meteor(f: Fighter, s: Dictionary, dir: Vector3) -> void:
+	var center: Vector3 = _aim_point(f, s, dir)
+	var n: int = int(s.get("count", 5))
+	for k in n:
+		var off := Vector3.ZERO if k == 0 else Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)).normalized() * randf_range(0.8, s.get("spread", 2.5))
+		var target: Vector3 = center + off
+		get_tree().create_timer(k * s.get("interval", 0.18) + 0.01, false).timeout.connect(func():
+			if not is_instance_valid(f): return
+			var rock := MeshInstance3D.new()
+			rock.mesh = _orb()
+			rock.material_override = ModelBuilder.mat(s.color.darkened(0.3))
+			rock.scale = Vector3.ONE * 0.7
+			add_child(rock)
+			_glow_sprite(rock, Color(s.color.r, s.color.g, s.color.b, 0.9), 2.0)
+			var marker := MeshInstance3D.new()
+			marker.mesh = _sector_mesh(1.0, 359.9, 0.8)
+			marker.material_override = _fx_mat(Color(s.color.r, s.color.g, s.color.b, 0.5))
+			marker.position = target + Vector3(0, 0.06, 0)
+			marker.scale = Vector3.ONE * s.get("radius", 1.4)
+			add_child(marker)
+			lobs.append({"node": rock, "marker": marker, "start": target + Vector3(2.0, 12.0, 2.0), "target": target, "t": 0.0,
+				"dur": 0.5, "dmg": s.dmg, "radius": s.get("radius", 1.4), "color": s.color, "owner": f, "height": 0.0,
+				"fx": fx_of(s), "breaks": s.get("break", false), "spec": {"zone": s.zone} if s.has("zone") else {}}))
+
+## Barriere: kurzzeitige Mauer quer zur Blickrichtung (blockiert Schüsse und Laufwege).
+func _barrier(f: Fighter, s: Dictionary, dir: Vector3) -> void:
+	var center: Vector3 = f.position + dir * s.get("range", 2.0)
+	var side := Vector3(-dir.z, 0, dir.x)
+	var created: Array = []
+	for k in range(-int(s.get("width", 3)) / 2, int(s.get("width", 3)) / 2 + 1):
+		var c: Vector3 = center + side * k
+		c = Vector3(round(c.x - 0.5) + 0.5, 0, round(c.z - 0.5) + 0.5)
+		var rect := Rect2(c.x - 0.5, c.z - 0.5, 1, 1)
+		if blocked(c):
+			continue
+		var occupied := false
+		for o in fighters:
+			if o.alive and rect.grow(o.radius).has_point(Vector2(o.position.x, o.position.z)):
+				occupied = true
+		if occupied:
+			continue
+		var nodes: Array = []
+		nodes.append(ModelBuilder.part(self, "rbox", c + Vector3(0, 0.6, 0), Vector3(0.95, 1.2, 0.95), s.color.lerp(Color.WHITE, 0.3)))
+		var blk := {"rect": rect, "nodes": nodes, "breakable": true, "color": s.color}
+		wall_blocks.append(blk)
+		created.append(blk)
+		_burst(c + Vector3(0, 0.6, 0), s.color, 10, 3.0, 0.15)
+	_rebuild_walls()
+	get_tree().create_timer(s.get("dur", 5.0), false).timeout.connect(func():
+		for blk in created:
+			if blk in wall_blocks:
+				for n in blk.nodes:
+					if is_instance_valid(n): n.queue_free()
+				wall_blocks.erase(blk)
+		_rebuild_walls())
+
+func _update_abilities(delta: float) -> void:
+	_update_zones(delta)
+	_update_turrets(delta)
+	_update_orbits(delta)
+	_update_mines(delta)
+	_update_spins(delta)
+	_update_leaps(delta)
+	for f in fighters:
+		if f.alive:
+			f.visible = not f.invisible() or f.team == player.team
+			if f.invisible() and f.team == player.team and randf() < 0.2:
+				aura_particle(f.position + Vector3(randf_range(-0.4, 0.4), randf_range(0.2, 1.6), randf_range(-0.4, 0.4)), Color(0.8, 0.8, 1.0))
+			elif f.buff_until > f.now() and randf() < 0.3:
+				aura_particle(f.position + Vector3(randf_range(-0.4, 0.4), randf_range(0.2, 1.6), randf_range(-0.4, 0.4)), f.buff_color)
+
 # ==================================================================== Update
 func _process(delta: float) -> void:
 	var input := _joy_vector()
@@ -801,6 +1303,7 @@ func _process(delta: float) -> void:
 	_update_waves(delta)
 	_update_lobs(delta)
 	_update_dashes(delta)
+	_update_abilities(delta)
 	_update_enemy_shots(delta)
 	_update_fx(delta)
 	_update_aim()
@@ -823,6 +1326,8 @@ func auto_aim(max_range: float) -> Vector3:
 	var best = null
 	var bd := max_range
 	for d in _targets(player):
+		if d.has("fighter") and d.fighter.invisible():
+			continue
 		var dist: float = (d.pos - player.position).length()
 		if dist < bd:
 			bd = dist
@@ -897,7 +1402,36 @@ func _update_waves(delta: float) -> void:
 	for i in range(waves.size() - 1, -1, -1):
 		var w: Dictionary = waves[i]
 		var node: MeshInstance3D = w.node
-		var step: float = w.speed * delta
+		var sp: Dictionary = w.spec
+		var owner_f: Fighter = w.owner
+		# Zielsuchend: lenkt zum nächsten Gegner
+		if sp.get("homing", 0.0) > 0.0 and not w.returning:
+			var best = null
+			var bd := 7.0
+			for d in _targets(owner_f):
+				var to: Vector3 = d.pos - node.position
+				to.y = 0
+				if to.length() < bd and w.dir.angle_to(to) < 1.6:
+					bd = to.length(); best = d
+			if best != null:
+				var want: Vector3 = (best.pos - node.position); want.y = 0
+				w.dir = w.dir.slerp(want.normalized(), clamp(sp.homing * delta, 0.0, 1.0)).normalized()
+				node.rotation.y = atan2(-w.dir.x, -w.dir.z)
+		# Bumerang auf dem Rückweg: zurück zum Werfer
+		if w.returning and is_instance_valid(owner_f):
+			var back: Vector3 = owner_f.position + Vector3(0, 0.75, 0) - node.position
+			back.y = 0
+			if back.length() < 0.8:
+				node.queue_free()
+				waves.remove_at(i)
+				continue
+			w.dir = back.normalized()
+		# Wachsend: wird mit der Strecke größer und stärker
+		if sp.get("grow", 0.0) > 0.0:
+			var g: float = 1.0 + sp.grow * clamp(w.travel / w.range, 0.0, 1.0)
+			w.width = w.base_width * g
+			(w.core as Node3D).scale = Vector3.ONE * w.base_width * 1.3 * g
+		var step: float = w.speed * (1.0 + sp.get("accel", 0.0) * w.travel / max(w.range, 0.1)) * delta
 		var nxt: Vector3 = node.position + w.dir * step
 		var done := false
 		if blocked(nxt):
@@ -905,6 +1439,17 @@ func _update_waves(delta: float) -> void:
 			var blk := _block_at(nxt)
 			if w.breaks and not blk.is_empty() and blk.breakable:
 				break_walls(nxt, 0.3)
+			elif w.bounces > 0:
+				# Abprallen: Richtung an der Wand spiegeln
+				w.bounces -= 1
+				if blocked(node.position + Vector3(w.dir.x * step, 0, 0)):
+					w.dir.x = -w.dir.x
+				else:
+					w.dir.z = -w.dir.z
+				w.hit.clear()
+				node.rotation.y = atan2(-w.dir.x, -w.dir.z)
+				_burst(node.position, w.color, 6, 3.0, 0.1)
+				continue
 			else:
 				done = true
 				if w.explode > 0.0:
@@ -916,7 +1461,9 @@ func _update_waves(delta: float) -> void:
 				# Strecken-Test (alte → neue Position): auch bei Rucklern fliegt nichts durch Gegner hindurch
 				if _seg_dist_xz(d.pos, node.position, nxt) <= w.width + d.radius:
 					w.hit.append(d)
-					_damage_dummy(d, w.dmg, w.owner, w.fx, nxt - w.dir)
+					var mult: float = sp.get("return_mult", 1.0) if w.returning else 1.0
+					_damage_dummy(d, w.dmg * mult, w.owner, w.fx, nxt - w.dir)
+					_on_projectile_hit(w, d)
 					if not w.pierce:
 						done = true
 						if w.explode > 0.0:
@@ -924,11 +1471,16 @@ func _update_waves(delta: float) -> void:
 						break
 		node.position = nxt
 		w.travel += step
-		if not done and w.travel >= w.range:
+		if not done and w.travel >= w.range and not w.returning:
 			done = true
 			if w.explode > 0.0:
 				_explode(nxt, w.explode, w.dmg * 0.5, w.color, w.owner, w.fx, w.breaks)
+		if done and sp.get("boomerang", false) and not w.returning:
+			w.returning = true
+			w.hit.clear()
+			continue
 		if done:
+			_projectile_end(w)
 			# Schweif ausklingen lassen, Projektil entfernen
 			var tr: CPUParticles3D = node.get_meta("trail")
 			if is_instance_valid(tr):
@@ -938,6 +1490,62 @@ func _update_waves(delta: float) -> void:
 			_burst(node.position, w.color, 6, 2.5, 0.1)
 			node.queue_free()
 			waves.remove_at(i)
+
+## Zusatzwirkungen beim Treffer: Heranziehen, Kettenblitz, Lebensraub.
+func _on_projectile_hit(w: Dictionary, d: Dictionary) -> void:
+	var sp: Dictionary = w.spec
+	var f: Fighter = w.owner
+	if sp.get("pull", 0.0) > 0.0 and is_instance_valid(f):
+		var to_owner: Vector3 = f.position - d.pos
+		to_owner.y = 0
+		var pull_dist: float = min(sp.pull, max(0.0, to_owner.length() - 1.2))
+		_push(d, to_owner.normalized() * pull_dist)
+	if sp.get("chain", 0) > 0:
+		_chain_lightning(d, int(sp.chain), w.dmg * 0.6, w.color, f, w.fx)
+	if sp.get("drain", 0.0) > 0.0 and is_instance_valid(f) and f.alive:
+		f.heal(w.dmg * sp.drain)
+
+## Projektil-Ende: zerplatzen in Splitter oder eine Bodenzone hinterlassen.
+func _projectile_end(w: Dictionary) -> void:
+	var sp: Dictionary = w.spec
+	var pos: Vector3 = w.node.position
+	if sp.get("split", 0) > 0 and is_instance_valid(w.owner):
+		var n: int = int(sp.split)
+		var sub := {"dmg": w.dmg * sp.get("split_mult", 0.45), "range": 3.5, "speed": 14.0, "width": 0.2, "color": w.color,
+			"origin": Vector3(pos.x, 0, pos.z) - w.dir * 0.5}
+		for k in n:
+			var a := TAU * k / n
+			_spawn_projectile(w.owner, Vector3(cos(a), 0, sin(a)), sub.dmg, sub.range, sub.speed, sub.width, w.color, false, 0.0, "orb", sub)
+	if sp.has("zone") and is_instance_valid(w.owner):
+		spawn_zone(w.owner, Vector3(pos.x, 0, pos.z), sp.zone, w.color)
+
+## Verschiebt ein Ziel (Brawler oder Puppe) um einen Vektor.
+func _push(d: Dictionary, v: Vector3) -> void:
+	if d.has("fighter"):
+		var fv: Fighter = d.fighter
+		fv.position = move_circle(fv.position, v, fv.radius)
+	else:
+		d.knock = v
+
+## Kettenblitz: springt vom Ziel auf weitere Gegner in der Nähe.
+func _chain_lightning(from_d: Dictionary, jumps: int, dmg: float, color: Color, f: Fighter, efx: Dictionary) -> void:
+	var done: Array = [from_d]
+	var cur: Dictionary = from_d
+	for j in jumps:
+		var best = null
+		var bd := 4.5
+		for d in _targets(f):
+			if d in done:
+				continue
+			var dist: float = (d.pos - cur.pos).length()
+			if dist < bd:
+				bd = dist; best = d
+		if best == null:
+			return
+		_beam_fx(cur.pos + Vector3(0, 1, 0), best.pos + Vector3(0, 1, 0), color, 0.12, 0.25)
+		_damage_dummy(best, dmg, f, efx, cur.pos)
+		done.append(best)
+		cur = best
 
 func _spawn_enemy_shot(pos: Vector3, dir: Vector3) -> void:
 	var mi := MeshInstance3D.new()
@@ -1287,6 +1895,9 @@ func _update_fx(delta: float) -> void:
 				var sm := node.material_override as ShaderMaterial
 				sm.set_shader_parameter("progress", k * 1.5)
 				sm.set_shader_parameter("fade", 1.0 - smoothstep(0.6, 1.0, k))
+			"beam":
+				node.scale.x = f.w * 1.2 * (1.0 - k)
+				node.scale.y = f.w * 0.6 * (1.0 - k)
 			"ring":
 				node.scale = Vector3.ONE * lerp(0.2, f.radius, 1.0 - (1.0 - k) * (1.0 - k))
 				(node.material_override as ShaderMaterial).set_shader_parameter("fade", 1.0 - k)
@@ -1528,12 +2139,12 @@ func _update_hud(delta: float) -> void:
 	if gad_btn.visible:
 		gad_btn.dim = player.gadget_uses <= 0 or player.gadget_cd > 0.0
 		gad_btn.charge = 1.0 - player.gadget_cd / g.get("cooldown", 5.0) if player.gadget_uses > 0 else 0.0
-		gad_label.text = ("%s (∞)" % g.name) if g.get("unlimited", false) else ("%s (%d)" % [g.name, player.gadget_uses])
+		gad_label.text = "∞" if g.get("unlimited", false) else "%d" % player.gadget_uses
 		gad_btn.queue_redraw()
 	for j in [move_joy, atk_joy, sup_joy]:
 		j.queue_redraw()
 	var f: Dictionary = player.form()
-	form_label.text = f.name + "   •   " + f.combo_name
+	form_label.text = f.name
 	for i in evo_dots.size():
 		var st := StyleBoxFlat.new()
 		st.set_corner_radius_all(13)
@@ -1541,8 +2152,7 @@ func _update_hud(delta: float) -> void:
 		st.set_border_width_all(3)
 		st.border_color = Color(0.05, 0.03, 0.1)
 		evo_dots[i].add_theme_stylebox_override("panel", st)
-	var hits_text: String = ("Kombo: %d Hieb(e) pro Munition" % f.combo.size()) if f.has("combo") else ("Angriff: " + f.combo_name)
-	info_label.text = "%s\nSchaden gesamt: %d\nSuper: %d%%" % [hits_text, int(total_damage), int(player.super_charge * 100)]
+	info_label.text = "Schaden gesamt: %d\nSuper: %d%%" % [int(total_damage), int(player.super_charge * 100)]
 	_set_score_text()
 	feed_label.text = "\n".join(feed)
 	banner_t += delta
@@ -1584,7 +2194,7 @@ func _update_bars() -> void:
 			bars[key] = bar
 		bar = bars[key]
 		var wpos: Vector3 = (o.position if is_player else o.pos) + Vector3(0, 2.55, 0)
-		var visible_bar: bool = (o.alive if is_player else true) and not cam.is_position_behind(wpos)
+		var visible_bar: bool = (o.alive and o.visible if is_player else true) and not cam.is_position_behind(wpos)
 		bar.visible = visible_bar
 		if not visible_bar:
 			continue

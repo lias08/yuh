@@ -47,8 +47,8 @@ static func _upgrade_skins(list: Array) -> void:
 		for sk in b.skins:
 			if extra.has(sk.id):
 				sk["look"] = extra[sk.id]
-		var themes := ["ritter", "vampir", "samurai", "engel", "wikinger", "zirkus", "pirat", "robo", "gold", "rocker"]
-		var key: String = themes[abs(hash(b.id)) % themes.size()]
+		var keys: Array = RosterData.PALETTES.keys()
+		var key: String = keys[abs(hash(b.id + "pal")) % keys.size()]
 		b.skins.append(RosterData.theme_skin(b, key))
 
 ## Seltenheitsfarben (Kartenfarbe, Box-Drops).

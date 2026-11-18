@@ -399,12 +399,56 @@ func award_match(res: Dictionary) -> Dictionary:
 		tr = table[clamp(res.rank - 1, 0, table.size() - 1)]
 		coins = max(5, 35 - (res.rank - 1) * 5)
 	coins += res.kills * 3
-	var total: int = int(data.get("trophies", 0))
-	tr = max(tr, -total)
-	data.trophies = total + tr
+	# Trophäen zählen für den gespielten Brawler (Rang) und insgesamt (Trophäenpfad)
+	var sel: String = data.selected
+	var bt: Dictionary = data.get("btrophies", {})
+	var cur: int = int(bt.get(sel, 0))
+	tr = trophy_gain(tr, cur)
+	tr = max(tr, -cur)
+	bt[sel] = cur + tr
+	data["btrophies"] = bt
+	data.trophies = max(0, int(data.get("trophies", 0)) + tr)
 	data.coins += coins
 	save_game()
 	return {"trophies": tr, "coins": coins}
+
+# ------------------------------------------------------------------ Brawler-Ränge (1–35)
+## Trophäen, die für Rang 1..35 nötig sind.
+const RANK_TROPHIES := [0, 10, 20, 30, 40, 60, 80, 100, 120, 140, 160, 180, 220, 260, 300, 340, 380, 420, 460, 500,
+	550, 600, 650, 700, 750, 800, 850, 900, 950, 1000, 1050, 1100, 1150, 1200, 1250]
+
+## Je mehr Trophäen ein Brawler hat, desto weniger gibt es pro Sieg: ab 750 nur 60 %, ab 1000 nur 35 %
+## (mindestens 1). Verluste bleiben gleich.
+static func trophy_gain(base: int, current: int) -> int:
+	if base <= 0:
+		return base
+	if current >= 1000:
+		return max(1, int(round(base * 0.35)))
+	if current >= 750:
+		return max(1, int(round(base * 0.6)))
+	return base
+
+func brawler_trophies(id: String) -> int:
+	return int(data.get("btrophies", {}).get(id, 0))
+
+func rank_of(trophies: int) -> int:
+	var r := 1
+	for i in RANK_TROPHIES.size():
+		if trophies >= RANK_TROPHIES[i]:
+			r = i + 1
+	return r
+
+func next_rank_trophies(trophies: int) -> int:
+	var r := rank_of(trophies)
+	return RANK_TROPHIES[r] if r < RANK_TROPHIES.size() else -1
+
+## Rangfarbe: wechselt alle 5 Ränge (Holz, Bronze, Silber, Gold, Smaragd, Diamant, Mythisch, Legendär/35).
+func rank_color(rank: int) -> Color:
+	var tiers := [Color(0.62, 0.42, 0.25), Color(0.8, 0.5, 0.25), Color(0.78, 0.8, 0.86), Color(1.0, 0.8, 0.2),
+		Color(0.25, 0.85, 0.5), Color(0.35, 0.7, 1.0), Color(0.75, 0.35, 1.0), Color(1.0, 0.25, 0.45)]
+	if rank >= 35:
+		return Color(1.0, 0.55, 0.9)
+	return tiers[clamp((rank - 1) / 5, 0, tiers.size() - 1)]
 
 ## Münzen für das Training (nach Schaden), max. 60 pro Runde.
 func award_training(damage: float) -> int:

@@ -31,6 +31,24 @@ var gadget_uses := 3
 var gadget_cd := 0.0
 var shield_until := 0.0
 var speed_until := 0.0
+var dmg_mult := 1.0
+var dmg_mult_until := 0.0
+var lifesteal := 0.0
+var lifesteal_until := 0.0
+var invis_until := 0.0
+var buff_color := Color.WHITE
+var buff_until := 0.0
+
+const ABILITY_TYPES := ["beam", "zone", "turret", "orbit", "mine", "spin", "leap", "blink", "slam", "buff", "meteor", "barrier", "fan"]
+
+func damage_mult() -> float:
+	return dmg_mult if _time < dmg_mult_until else 1.0
+
+func lifesteal_now() -> float:
+	return lifesteal if _time < lifesteal_until else 0.0
+
+func invisible() -> bool:
+	return _time < invis_until
 
 var _cooldown := 0.0
 var _last_damaged := -99.0
@@ -178,8 +196,11 @@ func try_attack(dir: Vector3) -> bool:
 	var atk: Dictionary = form().get("attack", {})
 	if not atk.is_empty():
 		# Fernkampf: Schuss (mit Salven) oder Wurf
-		_swing_t = 0.0; _swing_dur = 0.2; _swing_dir = "thrust" if atk.type == "shot" else "over"
-		if atk.type == "lob":
+		_swing_t = 0.0; _swing_dur = 0.2; _swing_dir = "thrust" if atk.type in ["shot", "beam", "fan"] else "over"
+		invis_until = 0.0  # Angreifen beendet Unsichtbarkeit
+		if atk.type in ABILITY_TYPES:
+			arena.ability(self, atk, aim_dir, false)
+		elif atk.type == "lob":
 			arena.throw_lob(self, atk, aim_dir, false)
 		else:
 			arena.fire_shot(self, atk, aim_dir, false)
@@ -221,6 +242,13 @@ func try_super(dir: Vector3) -> bool:
 	var stype: String = sup.get("type", "wave")
 	if stype != "wave":
 		_super_t = 0.0
+		if stype in ABILITY_TYPES:
+			if stype != "buff":
+				invis_until = 0.0
+			arena.ability(self, sup, aim_dir, true)
+			if sup.get("buff_after", {}).size() > 0:
+				arena.ability(self, sup.buff_after, aim_dir, true)
+			return true
 		match stype:
 			"shot": arena.fire_shot(self, sup, aim_dir, true)
 			"lob": arena.throw_lob(self, sup, aim_dir, true)
@@ -254,8 +282,12 @@ func add_charge(damage: float) -> void:
 static func attack_damage(f: Dictionary) -> float:
 	var atk: Dictionary = f.get("attack", {})
 	if not atk.is_empty():
-		if atk.type == "lob":
-			return atk.dmg
+		if atk.has("dps"):
+			return atk.dps * atk.get("dur", 2.0) * 0.6
+		if atk.type in ["lob", "beam", "mine", "slam", "blink", "leap"]:
+			return atk.dmg * (1.0 + float(atk.get("chain", 0)) * 0.5) * float(atk.get("hits", 1)) * float(atk.get("waves", 1))
+		if atk.type == "fan":
+			return atk.dmg * atk.get("count", 3) * 0.6
 		return atk.dmg * atk.get("count", 1) * atk.get("burst", 1) * (0.6 if atk.get("count", 1) > 2 else 1.0)
 	var total := 0.0
 	for s in f.combo:
@@ -288,6 +320,9 @@ func respawn(pos: Vector3) -> void:
 	stun_until = 0.0
 	slow_until = 0.0
 	knock = Vector3.ZERO
+	invis_until = 0.0
+	dmg_mult_until = 0.0
+	lifesteal_until = 0.0
 	alive = true
 	visible = true
 	hp = max_hp
