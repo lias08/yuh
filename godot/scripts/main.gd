@@ -129,7 +129,86 @@ func _show_form(i: int) -> void:
 	stage_rig.root.rotation.y = PI
 	stage_model.add_child(stage_rig.root)
 
+# ==================================================================== Wisch-Scrollen
+# Listen lassen sich überall mit dem Finger verschieben (auch über Knöpfen), nicht nur an der Leiste.
+# Wer wischt, löst dabei keinen Knopf aus. Nach dem Loslassen gleitet die Liste etwas nach.
+var _sc: ScrollContainer = null
+var _sc_start := Vector2.ZERO
+var _sc_origin := Vector2.ZERO
+var _sc_dragging := false
+var _sc_vel := Vector2.ZERO
+var _sc_last := Vector2.ZERO
+var _sc_glide: ScrollContainer = null
+
+func _input(event: InputEvent) -> void:
+	if current_match != null or screen == null:
+		return
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			_sc = _scroll_at(event.position)
+			_sc_glide = null
+			_sc_dragging = false
+			if _sc != null:
+				_sc_start = event.position
+				_sc_last = event.position
+				_sc_vel = Vector2.ZERO
+				_sc_origin = Vector2(_sc.scroll_horizontal, _sc.scroll_vertical)
+		else:
+			if _sc != null and _sc_dragging:
+				_sc_glide = _sc
+			_sc = null
+			_sc_dragging = false
+	elif event is InputEventMouseMotion and _sc != null and is_instance_valid(_sc):
+		var d: Vector2 = event.position - _sc_start
+		var horiz := _sc.horizontal_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED
+		var vert := _sc.vertical_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED
+		var amount: float = (abs(d.x) if horiz else 0.0) + (abs(d.y) if vert else 0.0)
+		if not _sc_dragging and amount > 14.0:
+			_sc_dragging = true
+			_cancel_button_presses(_sc)
+		if _sc_dragging:
+			var scale_f := 1.0  # Ereignis-Koordinaten sind bereits Bildschirm-Layout-Koordinaten
+			var dd: Vector2 = d * scale_f
+			if horiz:
+				_sc.scroll_horizontal = int(_sc_origin.x - dd.x)
+			if vert:
+				_sc.scroll_vertical = int(_sc_origin.y - dd.y)
+			_sc_vel = _sc_vel.lerp((_sc_last - event.position) * scale_f * 60.0, 0.4)
+			_sc_last = event.position
+			get_viewport().set_input_as_handled()
+
+## Oberste sichtbare Liste unter dem Finger.
+func _scroll_at(pos: Vector2) -> ScrollContainer:
+	var found: ScrollContainer = null
+	for n in screen.find_children("*", "ScrollContainer", true, false):
+		var sc := n as ScrollContainer
+		if sc.is_visible_in_tree() and sc.get_global_rect().has_point(pos):
+			found = sc
+	return found
+
+## Bereits angetippte Knöpfe "loslassen", damit das Wischen keinen Klick auslöst.
+func _cancel_button_presses(root: Node) -> void:
+	for n in root.find_children("*", "BaseButton", true, false):
+		var b := n as BaseButton
+		if not b.disabled:
+			b.disabled = true
+			b.set_deferred("disabled", false)
+
+func _scroll_glide(delta: float) -> void:
+	if _sc_glide == null or not is_instance_valid(_sc_glide):
+		_sc_glide = null
+		return
+	if _sc_vel.length() < 20.0:
+		_sc_glide = null
+		return
+	if _sc_glide.horizontal_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED:
+		_sc_glide.scroll_horizontal += int(_sc_vel.x * delta)
+	if _sc_glide.vertical_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED:
+		_sc_glide.scroll_vertical += int(_sc_vel.y * delta)
+	_sc_vel *= pow(0.04, delta)
+
 func _process(delta: float) -> void:
+	_scroll_glide(delta)
 	_t += delta
 	if stage_model and is_instance_valid(stage_model) and stage_rig.has("root") and is_instance_valid(stage_rig.root):
 		stage_model.rotation.y = sin(_t * 0.6) * 0.6
