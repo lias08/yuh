@@ -526,13 +526,18 @@ class TrainingMode extends Mode {
     const mk = (cls, html) => { const d = document.createElement('div'); d.className = cls; d.innerHTML = html; root.appendChild(d); return d; };
     this.dpsEl = mk('tr-dps', 'Schaden: 0 · DPS: 0');
     const def = p.def;
-    const abil = mk('tr-abil', '');
-    this.abilEl = abil;
+    const panel = mk('tr-panel', `<button class="tr-toggle" data-a="toggle"><span class="tr-arrow">◀</span> Training-Menü</button><div class="tr-body"><div class="tr-btns"><button data-a="heal">♻ Puppen heilen</button><button data-a="form">✺ Form füllen</button><button data-a="super">★ Super laden</button><button data-a="move">⇄ Laufpuppe</button><button data-a="bot">⚔ Bot an/aus</button><button data-a="reset">⟲ Zähler reset</button><button data-a="switch">👤 Kämpfer</button></div><div class="tr-abil"></div></div>`);
+    this.abilEl = panel.querySelector('.tr-abil');
     this.refreshAbil();
-    const panel = mk('tr-panel', `<button data-a="heal">♻ Puppen heilen</button><button data-a="form">✺ Form-Anzeige füllen</button><button data-a="super">★ Super laden</button><button data-a="move">⇄ Bewegliche Puppe</button><button data-a="bot">⚔ Gegner-Bot an/aus</button><button data-a="reset">⟲ Schadenszähler</button><button data-a="switch">👤 Kämpfer wechseln</button>`);
+    let open = false;
+    try { open = localStorage.getItem('animebrawl.trainingMenu') === 'open'; } catch {}
+    const setOpen = (v) => { open = v; panel.classList.toggle('open', v); panel.querySelector('.tr-arrow').textContent = v ? '▶' : '◀'; try { localStorage.setItem('animebrawl.trainingMenu', v ? 'open' : 'closed'); } catch {} };
+    setOpen(open);
+    this.setPanelOpen = setOpen;
     panel.addEventListener('pointerdown', (e) => {
       const b = e.target.closest('button'); if (!b) return; e.stopPropagation();
       const a = b.dataset.a, f = w.player;
+      if (a === 'toggle') { this.setPanelOpen(!panel.classList.contains('open')); return; }
       if (a === 'heal') for (const d of this.dummies) { d.hp = d.maxHp; d.alive = true; d.mesh.visible = true; }
       if (a === 'form') f.transCharge = 1;
       if (a === 'super') { f.superCharge = 1; f.overCharge = 1; }

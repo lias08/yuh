@@ -440,11 +440,18 @@ img[data-p] { opacity: 0; transition: opacity .3s; } img[data-p].ready { opacity
 .train-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 78px; height: 78px; border-radius: 20px; font-family: var(--disp); font-size: 13px; background: linear-gradient(180deg, #6ab8ff, var(--blue2)); box-shadow: 0 5px 0 rgba(0,0,0,.35), inset 0 2px 0 rgba(255,255,255,.35); color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.35); }
 .train-btn .ico { width: 30px; height: 30px; }
 @media (max-width: 900px), (max-height: 520px) { .train-btn { width: 62px; height: 62px; font-size: 11px; } .train-btn .ico { width: 24px; height: 24px; } }
-.tr-panel { position: absolute; left: calc(12px + var(--safe-l)); top: calc(60px + var(--safe-t)); display: flex; flex-direction: column; gap: 6px; pointer-events: auto; }
-.tr-panel button { padding: 7px 10px; border-radius: 10px; background: rgba(10,8,28,.75); border: 2px solid rgba(255,255,255,.15); font-size: 12px; text-align: left; }
+.tr-panel { position: absolute; right: calc(12px + var(--safe-r)); top: calc(56px + var(--safe-t)); display: flex; flex-direction: column; align-items: flex-end; gap: 6px; pointer-events: auto; width: min(270px, 44vw); z-index: 3; }
+.tr-panel:not(.open) { width: auto; }
+.tr-panel button { padding: 7px 10px; border-radius: 10px; background: rgba(10,8,28,.78); border: 2px solid rgba(255,255,255,.15); font-size: 12px; text-align: left; width: 100%; }
 .tr-panel button:active { transform: scale(.96); }
+.tr-panel .tr-toggle { width: auto; font-family: var(--disp); font-size: 13px; background: linear-gradient(180deg, #4a4290, #2e2766); box-shadow: 0 3px 0 rgba(0,0,0,.35); }
+.tr-body { display: none; flex-direction: column; gap: 6px; width: 100%; max-height: max(130px, calc(100vh - 300px)); overflow-y: auto; touch-action: pan-y; }
+.tr-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.tr-btns button { padding: 6px 8px; font-size: 11px; white-space: nowrap; }
+.tr-panel.open .tr-body { display: flex; animation: uiIn .18s; }
 .tr-dps { position: absolute; left: 50%; top: calc(96px + var(--safe-t)); transform: translateX(-50%); background: rgba(10,8,28,.7); padding: 4px 12px; border-radius: 10px; font-size: 13px; pointer-events: none; }
-.tr-abil { position: absolute; left: calc(12px + var(--safe-l)); bottom: calc(14px + var(--safe-b)); max-width: 360px; background: rgba(10,8,28,.72); border-radius: 12px; padding: 8px 12px; font-size: 12px; pointer-events: none; line-height: 1.4; }
+.tr-abil { background: rgba(10,8,28,.78); border-radius: 12px; padding: 8px 10px; font-size: 11px; line-height: 1.4; }
 .tr-abil b { color: var(--yellow); }
+.screen-battle ~ #hud .hud-feed, .hud:has(.tr-panel) .hud-feed { top: auto; bottom: calc(260px + var(--safe-b)); }
 .pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 8px; max-height: 60vh; overflow-y: auto; touch-action: pan-y; }
 .pick-grid button { border-radius: 12px; background: #241e50; padding: 4px; font-size: 10px; } .pick-grid img { width: 100%; aspect-ratio: 1; }
