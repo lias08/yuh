@@ -102,6 +102,9 @@ const ROWS := [
 	["Astra", "Sternenkaiserin", "Legendär", "magier", "kosmos", "long", "happy", "wand", "2a1a5a", "ffd040", "ffffff", "crown,halo", 1.0],
 	["Echo", "Phantomklinge", "Legendär", "assassine", "klang", "hood", "visor", "katana", "1a1a2a", "ff40c0", "111111", "scarf", 1.0],
 	["Titania", "Feenkönigin", "Legendär", "heiler", "licht", "long", "happy", "wand", "ffd0f0", "ffd040", "fff0a0", "wings,crown", 0.95],
+	# ---------------- Hyperlegendär: Geist-Nutzer (eigene Figuren)
+	["Aurion", "Hüter des Ursprungs", "Hyperlegendär", "magier", "licht", "long", "happy", "staff", "f4efe2", "e0b040", "f0d070", "halo,medal", 1.05],
+	["Kalamis", "Bote des Unheils", "Hyperlegendär", "kontrolle", "schatten", "hood", "sleepy", "book", "2a2440", "70d0ff", "e8e8f0", "scarf", 1.0],
 	# ---------------- Legendär: Anime-Kämpfer (eigene Figuren)
 	["Kairo", "Kampfmönch der Sonne", "Legendär", "krieger", "licht", "topknot", "happy", "fists", "f2f2f2", "ffb020", "8a3a20", "medal", 1.0],
 	["Nyxara", "Weberin des Sternenraums", "Legendär", "kontrolle", "kosmos", "ponytail", "sleepy", "book", "1c1a40", "c070ff", "e070c0", "halo,flower", 1.0],
@@ -206,7 +209,7 @@ static func build(row: Array) -> Dictionary:
 		"eye": col.darkened(0.35), "blade": col.lerp(Color.WHITE, 0.35), "size": row[12], "acc": acc,
 		"hat": Color.html(row[8]).darkened(0.2), "mark": col, "body": _body_type(row[3], name)}
 	# Seltenere Brawler sind etwas stärker
-	var rar_mul: float = {"Selten": 1.0, "Super Selten": 1.04, "Episch": 1.08, "Mythisch": 1.12, "Legendär": 1.16}[rarity]
+	var rar_mul: float = {"Selten": 1.0, "Super Selten": 1.04, "Episch": 1.08, "Mythisch": 1.12, "Legendär": 1.16, "Hyperlegendär": 1.6}[rarity]
 	var hp: float = round(cls.hp * _var(name, "hp", 0.08) * rar_mul / 50.0) * 50.0
 	var speed: float = snapped(cls.speed * _var(name, "sp", 0.04), 0.05)
 	var dm: float = _var(name, "dmg", 0.08) * rar_mul
@@ -228,6 +231,7 @@ static func build(row: Array) -> Dictionary:
 		"klang": sfx["stun"] = 0.4
 	hp = round(hp / 50.0) * 50.0
 	var kit: Array = KITS()[name].duplicate()
+	var base_kit: Array = kit.duplicate()
 	var anime: Dictionary = ANIME_SUPERS()
 	if anime.has(name):
 		kit[3] = anime[name][0]
@@ -247,8 +251,38 @@ static func build(row: Array) -> Dictionary:
 			atk_spec["range"] = atk_spec.get("radius", 3.0)
 		form["attack"] = atk_spec
 	var forms := [form]
+	var stand_spirit := {}
 	if sup_spec.type == "awaken":
 		forms.append(_awakened_form(form, sup_spec, col, dm))
+	elif sup_spec.type == "spirit":
+		# Geist-Nutzer: Gadget fährt den Geist ein/aus -> zwei Movesets
+		stand_spirit = sup_spec.duplicate(true)
+		stand_spirit["interval"] = sup_spec.get("interval", 0.14) * 1.8  # passiv etwas langsamer
+		var base_sup: Dictionary
+		if base_kit[5].is_empty():
+			base_sup = {"type": "slam", "radius": 3.0, "dmg": 1200.0, "color": col}
+			base_sup["name"] = "Schockwelle"
+			base_sup["desc"] = "Eine Druckwelle um ihn herum."
+		else:
+			base_sup = _prep(base_kit[5].duplicate(true), col, dm)
+			base_sup["name"] = base_kit[3]
+			base_sup["desc"] = base_kit[4]
+		form["super"] = base_sup
+		var f2: Dictionary = form.duplicate(true)
+		f2.name = "Mit Geist: " + kit[3].replace("Geistwächter: ", "")
+		f2["aura"] = Color(sup_spec.color.r, sup_spec.color.g, sup_spec.color.b, 0.5)
+		f2["combo_name"] = "Geisthagel"
+		f2["combo_desc"] = "1 Munition = der Geist schlägt 4-mal blitzschnell zu (große Reichweite)."
+		f2.erase("attack")
+		f2["combo"] = []
+		for k in 4:
+			f2.combo.append({"t": k * 0.06, "dir": ["ltr", "rtl", "thrust", "over"][k], "dmg": round(330.0 * dm), "range": 3.1, "arc": 90.0, "color": col, "stun": 0.06 if k == 3 else 0.0})
+		var ult: Dictionary = sup_spec.get("stand_ult", {"type": "dash", "dmg": 1900.0, "range": 7.0, "speed": 20.0, "knock": 3.0, "stun": 0.6})
+		ult = _prep(ult.duplicate(true), col, dm)
+		ult["name"] = sup_spec.get("stand_ult_name", "Finaler Schlaghagel")
+		ult["desc"] = sup_spec.get("stand_ult_desc", "Der Geist stürmt mit seinem Herrn nach vorne und schleudert alles weg.")
+		f2["super"] = ult
+		forms.append(f2)
 	var gtype: String = cls.gad
 	if elem in ["natur", "licht"]:
 		gtype = "heal"
@@ -257,6 +291,10 @@ static func build(row: Array) -> Dictionary:
 		"hp": hp, "speed": speed, "ammo": 3, "reload": snapped(cls.reload * _var(name, "rl", 0.06), 0.05),
 		"cooldown": 0.38, "charge_hits": 4.0, "forms": forms, "wclass": cls.wclass, "no_evolve": true,
 		"gadget": _gadget(gtype, pre, col)}
+	if not stand_spirit.is_empty():
+		b["stand_spirit"] = stand_spirit
+		b["gadget"] = {"name": "Geist rufen", "desc": "Fährt den Geist aus oder ein – wechselt zwischen zwei Movesets. Unbegrenzt, 1,5 s Abklingzeit.",
+			"type": "stand_toggle", "cooldown": 1.5, "unlimited": true, "color": stand_spirit.color}
 	b["skins"] = theme_skins(b, 3)
 	return b
 
@@ -284,6 +322,7 @@ static func _rarity_color(r: String) -> Color:
 		"Episch": return Color(0.75, 0.35, 1.0)
 		"Mythisch": return Color(1.0, 0.3, 0.4)
 		"Legendär": return Color(1.0, 0.85, 0.15)
+		"Hyperlegendär": return Color(1.0, 0.25, 0.75)
 	return Color(0.6, 0.8, 1.0)
 
 static func _elem_desc(e: String) -> String:
@@ -516,6 +555,14 @@ static func ANIME_SUPERS() -> Dictionary:
 			"atk_name": "Bestienklaue", "atk_desc": "Wilde Klauenhiebe mit Eiswelle.",
 			"sup_name": "Urschrei", "sup_desc": "Sprung mit gewaltigem Einschlag.",
 			"sup": {"type": "leap", "range": 9.0, "radius": 3.5, "dmg": 2200.0, "stun": 1.0, "break": true}}],
+	"Aurion": ["Geistwächter: Ursprung", "Ein goldener Geist kämpft an seiner Seite.",
+		{"type": "spirit", "dur": 8.0, "dmg": 230.0, "interval": 0.11, "reach": 3.0, "spirit_hair": "long", "spirit_face": "visor", "spirit_acc": ["halo", "wings", "pauldrons"], "spirit_color": Color(1.0, 0.85, 0.35),
+			"stand_ult": {"type": "rewind", "radius": 7.5, "dmg": 2600.0, "stun": 2.0}, "stand_ult_name": "Rückfall",
+			"stand_ult_desc": "Spult alle Gegner im Umkreis 3 s in der Zeit zurück: zurück an ihren alten Ort, Geschosse gelöscht, Munition leer, 2 s betäubt und schwer verletzt."}],
+	"Kalamis": ["Geistwächter: Verhängnis", "Ein Unheilsgeist schwebt an seiner Seite.",
+		{"type": "spirit", "dur": 8.0, "dmg": 210.0, "interval": 0.12, "reach": 3.0, "spirit_hair": "hood", "spirit_face": "cyclops", "spirit_acc": ["bat_wings", "spikes"], "spirit_color": Color(0.45, 0.8, 1.0),
+			"stand_ult": {"type": "doom", "radius": 7.0, "dmg": 700.0, "dur": 9.0}, "stand_ult_name": "Verhängnis",
+			"stand_ult_desc": "9 s lang trifft jeden Gegner in seiner Nähe immer wieder zufälliges Unglück: herabstürzende Trümmer, die betäuben und verlangsamen."}],
 	"Kairo": ["Erwachen: Sonnenkern", "Erwacht für 12 s: Sonnenaura, Heiligenschein und Lichtflügel, stärkere Kombos und eine gewaltige Energiekanone als Super.",
 		{"type": "awaken", "dur": 12.0, "dmg": 1000.0, "radius": 3.2, "knock": 1.5, "form_name": "Erwacht – Sonnenkern", "acc": ["halo", "wings", "pauldrons"],
 			"atk_name": "Sonnenfaust-Sturm", "atk_desc": "Kombo mit durchschlagender Energiewelle.",
@@ -798,6 +845,10 @@ static func KITS() -> Dictionary:
 		"Schwarzes Loch", "Ein schwarzes Loch saugt alles ein und zermalmt es.", {"type": "zone", "range": 8.0, "radius": 4.0, "dur": 3.5, "dps": 900.0, "pull": 7.0}],
 	"Echo": ["Echoschnitt", "1 Munition = blitzt zum nächsten Gegner und schneidet.", {"type": "blink", "range": 5.0, "dmg": 900.0},
 		"Tausendfaches Echo", "Springt 6-mal zwischen Gegnern hin und her.", {"type": "blink", "range": 7.0, "hits": 6, "dmg": 600.0, "stun": 0.2}],
+	"Aurion": ["Lebensfunke", "1 Munition = ein Funke, der durchfliegt und ihn heilt.", {"type": "shot", "dmg": 600.0, "range": 9.0, "speed": 15.0, "width": 0.35, "visual": "orb", "pierce": true, "drain": 0.35},
+		"Quelle des Lebens", "Ein Lebensfeld: heilt Verbündete und schadet Gegnern.", {"type": "zone", "range": 6.0, "radius": 3.5, "dur": 5.0, "dps": 500.0, "heal": 0.12}],
+	"Kalamis": ["Unglücksbote", "1 Munition = 2 Unglücksboten, die Gegner verfolgen und verlangsamen.", {"type": "shot", "dmg": 420.0, "range": 9.0, "speed": 11.0, "count": 2, "spread": 18.0, "width": 0.3, "visual": "orb", "homing": 4.0, "slow": 0.8},
+		"Pechsträhne", "Trümmer stürzen auf das Zielgebiet.", {"type": "meteor", "range": 9.0, "count": 7, "dmg": 600.0, "radius": 1.4, "spread": 2.8, "stun": 0.3}],
 	"Kairo": ["Sonnenfaust-Kombo", "1 Munition = 2 Faustschläge und ein Stoß, der eine Energiekugel abfeuert.", M([{"t": 0.0, "dir": "ltr", "dmg": 420.0, "range": 2.4, "arc": 120.0}, {"t": 0.1, "dir": "rtl", "dmg": 420.0, "range": 2.4, "arc": 120.0}, {"t": 0.22, "dir": "thrust", "dmg": 500.0, "range": 2.6, "arc": 70.0, "knock": 1.0, "wave": {"dmg": 450.0, "range": 7.0, "width": 0.5, "speed": 18.0}}]),
 		"", "", {}],
 	"Nyxara": ["Gravitationskern", "1 Munition = ein Sternenkern, der Gegner verfolgt und heranzieht.", {"type": "shot", "dmg": 600.0, "range": 8.5, "speed": 11.0, "width": 0.4, "visual": "orb", "homing": 2.5, "pull": 2.0},

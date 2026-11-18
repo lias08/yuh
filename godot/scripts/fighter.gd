@@ -40,7 +40,9 @@ var buff_color := Color.WHITE
 var buff_until := 0.0
 
 const ABILITY_TYPES := ["beam", "zone", "turret", "orbit", "mine", "spin", "leap", "blink", "slam", "buff", "meteor", "barrier", "fan",
-	"awaken", "domain", "spirit"]
+	"awaken", "domain", "spirit", "rewind", "doom"]
+var position_history: Array = []   # Positionen der letzten ~3 s (für Zeitrücklauf)
+var _hist_t := 0.0
 var awaken_until := 0.0   # Erwachen: Zeitpunkt, an dem die erwachte Form endet
 
 var level := 1
@@ -180,6 +182,12 @@ func update_movement(input: Vector2, delta: float) -> void:
 		ammo = min(float(def.ammo), ammo + delta / reload_time())
 	_cooldown -= delta
 	gadget_cd = max(0.0, gadget_cd - delta)
+	_hist_t -= delta
+	if _hist_t <= 0.0:
+		_hist_t = 0.25
+		position_history.append(position)
+		if position_history.size() > 12:
+			position_history.pop_front()
 	# Erwachen läuft ab -> zurück in die Grundform
 	if awaken_until > 0.0 and _time >= awaken_until:
 		awaken_until = 0.0
@@ -333,6 +341,9 @@ func respawn(pos: Vector3) -> void:
 	slow_until = 0.0
 	knock = Vector3.ZERO
 	invis_until = 0.0
+	position_history.clear()
+	if def.has("stand_spirit") and form_index != 0:
+		apply_form(0, false)
 	if awaken_until > 0.0:
 		awaken_until = 0.0
 		apply_form(0, false)

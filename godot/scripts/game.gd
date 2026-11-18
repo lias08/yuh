@@ -419,19 +419,29 @@ func open_box(type: String, free := false, gift := false) -> Array:
 	save_game()
 	return rewards
 
+## Feste Chance pro Seltenheit, wenn ein Brawler gezogen wird (Hyperlegendär hat einen eigenen Wurf).
+const RARITY_CHANCE := [["Selten", 0.50], ["Super Selten", 0.28], ["Episch", 0.14], ["Mythisch", 0.06], ["Legendär", 0.02]]
+
 func _roll_locked_brawler() -> Dictionary:
-	var locked: Array = brawlers.filter(func(b): return not is_unlocked(b.id) and BrawlersData.rarity_weight(b.rarity) > 0.0)
+	var locked: Array = brawlers.filter(func(b): return not is_unlocked(b.id) and b.rarity != "Hyperlegendär")
 	if locked.is_empty():
 		return {}
-	var total := 0.0
-	for b in locked:
-		total += BrawlersData.rarity_weight(b.rarity)
-	var x := randf() * total
-	for b in locked:
-		x -= BrawlersData.rarity_weight(b.rarity)
+	# Seltenheit würfeln; ist dort schon alles freigeschaltet, nächstgewöhnlichere/-seltenere nehmen
+	var x := randf()
+	var idx := RARITY_CHANCE.size() - 1
+	for i in RARITY_CHANCE.size():
+		x -= RARITY_CHANCE[i][1]
 		if x <= 0.0:
-			return b
-	return locked[-1]
+			idx = i
+			break
+	for off in [0, -1, 1, -2, 2, -3, 3, -4, 4]:
+		var j: int = idx + off
+		if j < 0 or j >= RARITY_CHANCE.size():
+			continue
+		var pool: Array = locked.filter(func(b): return b.rarity == RARITY_CHANCE[j][0])
+		if not pool.is_empty():
+			return pool.pick_random()
+	return locked.pick_random()
 
 func _roll_skin() -> Dictionary:
 	var pool: Array = []

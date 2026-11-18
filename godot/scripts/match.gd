@@ -358,8 +358,9 @@ func _random_brawler() -> Dictionary:
 func _spawn_point(f: Fighter) -> Vector3:
 	if mode == "showdown":
 		var i: int = fighters.find(f)
+		# gleichmäßig am Rand verteilt, möglichst weit auseinander
 		var a: float = TAU * i / max(1, fighters.size()) + PI / 2.0
-		return resolve_circle(Vector3(cos(a) * ARENA_W * 0.4, 0, sin(a) * ARENA_H * 0.4), 0.5)
+		return resolve_circle(Vector3(cos(a) * (ARENA_W / 2.0 - 2.5), 0, sin(a) * (ARENA_H / 2.0 - 2.5)), 0.5)
 	var same: Array = fighters.filter(func(x): return x.team == f.team)
 	var idx: int = same.find(f)
 	var z: float = 10.5 if f.team == 0 else -11.0
@@ -394,7 +395,7 @@ func nearest_enemy(f: Fighter):
 func super_range(f: Fighter) -> float:
 	var s: Dictionary = f.form().super
 	# Fähigkeiten rund um den Brawler: Bots setzen sie ein, wenn Gegner nah sind
-	if s.get("type", "") in ["spin", "slam", "buff", "orbit", "awaken", "domain", "spirit"] or (s.get("type", "") == "zone" and s.get("range", 1.0) <= 0.5):
+	if s.get("type", "") in ["spin", "slam", "buff", "orbit", "awaken", "domain", "spirit", "rewind", "doom"] or (s.get("type", "") == "zone" and s.get("range", 1.0) <= 0.5):
 		return s.get("radius", 2.5) + 1.5
 	return s.get("range", 8.0)
 
@@ -658,6 +659,18 @@ func nova(f: Fighter, s: Dictionary) -> void:
 func use_gadget(f: Fighter, g: Dictionary) -> void:
 	var c: Color = g.get("color", Color(0.4, 1.0, 0.5))
 	match g.type:
+		"stand_toggle":
+			# Geist ein-/ausfahren: wechselt zwischen zwei Movesets
+			if f.form_index == 0:
+				f.apply_form(1, false)
+				var sp_spec: Dictionary = f.def.get("stand_spirit", {}).duplicate()
+				sp_spec["dur"] = 99999.0
+				sp_spec["color"] = sp_spec.get("color", c)
+				_summon_spirit(f, sp_spec)
+			else:
+				_dismiss_spirit(f)
+				f.apply_form(0, false)
+			_ring_fx(f.position, 1.8, c, 0.3)
 		"swap":
 			# Waffenwechsel: nächste Waffe aus dem Arsenal (eigener Angriff + eigene Super)
 			f.apply_form((f.form_index + 1) % f.def.forms.size(), false)
@@ -890,6 +903,8 @@ func ability(f: Fighter, s: Dictionary, dir: Vector3, is_super: bool) -> void:
 		"awaken": _awaken(f, s)
 		"domain": _domain(f, s)
 		"spirit": _summon_spirit(f, s)
+		"rewind": _rewind(f, s)
+		"doom": _doom_aura(f, s)
 		"fan":
 			var n: int = int(s.get("count", 3))
 			var spread: float = s.get("spread", 30.0)
@@ -1342,6 +1357,7 @@ func _update_abilities(delta: float) -> void:
 	_update_spins(delta)
 	_update_leaps(delta)
 	_update_spirits(delta)
+	_update_dooms(delta)
 	for f in fighters:
 		if f.alive:
 			f.visible = not f.invisible() or f.team == player.team
@@ -1416,6 +1432,14 @@ func _summon_spirit(f: Fighter, s: Dictionary) -> void:
 	_ring_fx(f.position, 2.5, c, 0.4)
 	Game.play_sfx("transform", 0.9, 1.3)
 
+func _dismiss_spirit(f: Fighter) -> void:
+	for i in range(spirits.size() - 1, -1, -1):
+		if spirits[i].owner == f:
+			var root: Node3D = spirits[i].rig.root
+			_burst(root.position + Vector3(0, 1.0, 0), spirits[i].color, 24, 4.0, 0.2)
+			root.queue_free()
+			spirits.remove_at(i)
+
 func _update_spirits(delta: float) -> void:
 	for i in range(spirits.size() - 1, -1, -1):
 		var sp: Dictionary = spirits[i]
@@ -1461,6 +1485,67 @@ func _update_spirits(delta: float) -> void:
 		ModelBuilder.update_limbs(rig)
 		if randf() < 0.4:
 			aura_particle(root.position + Vector3(randf_range(-0.5, 0.5), randf_range(0.3, 1.8), randf_range(-0.5, 0.5)), sp.color)
+
+## Zeitrücklauf: Gegner im Umkreis werden an ihre Position von vor 3 s zurückgesetzt,
+## ihre Geschosse verschwinden, sie sind betäubt und nehmen schweren Schaden.
+func _rewind(f: Fighter, s: Dictionary) -> void:
+	var r: float = s.get("radius", 7.0)
+	# erst Schaden + Betäubung, dann zurückspulen
+	for d in _targets(f):
+		if (d.pos - f.position).length() <= r:
+			_damage_dummy(d, s.dmg, f, {"stun": s.get("stun", 2.0)}, f.position)
+	for o in fighters:
+		if o.alive and is_enemy(f, o) and (o.position - f.position).length() <= r:
+			var old: Vector3 = o.position_history[0] if o.position_history.size() > 0 else o.position
+			_beam_fx(o.position + Vector3(0, 1, 0), old + Vector3(0, 1, 0), s.color, 0.15, 0.5)
+			_burst(o.position + Vector3(0, 1, 0), s.color, 20, 3.0, 0.2)
+			o.position = resolve_circle(old, o.radius)
+			o.position_history.clear()
+			o.ammo = 0.0
+			o.super_charge = max(0.0, o.super_charge - 0.5)
+	for i in range(waves.size() - 1, -1, -1):
+		var w: Dictionary = waves[i]
+		if w.owner != f and is_instance_valid(w.owner) and is_enemy(f, w.owner) and (w.node.position - f.position).length() <= r:
+			w.node.queue_free()
+			waves.remove_at(i)
+	for k in 4:
+		get_tree().create_timer(k * 0.1, false).timeout.connect(func(): _ring_fx(f.position, r * (1.0 - k * 0.2), s.color, 0.5))
+	_shake = 0.8
+	Game.play_sfx("transform", 1.0, 0.6)
+
+## Unheilsaura: Gegner im Umkreis werden immer wieder von zufälligem Unglück getroffen.
+var dooms: Array = []
+
+func _doom_aura(f: Fighter, s: Dictionary) -> void:
+	dooms.append({"owner": f, "t": 0.0, "dur": s.get("dur", 8.0), "tick": 0.0, "radius": s.get("radius", 6.5), "dmg": s.dmg, "color": s.color})
+	_ring_fx(f.position, s.get("radius", 6.5), s.color, 0.6)
+	_shake = 0.5
+	Game.play_sfx("transform", 1.0, 0.5)
+
+func _update_dooms(delta: float) -> void:
+	for i in range(dooms.size() - 1, -1, -1):
+		var dm: Dictionary = dooms[i]
+		dm.t += delta
+		dm.tick -= delta
+		var f: Fighter = dm.owner if is_instance_valid(dm.owner) else null
+		if f == null or not f.alive or dm.t >= dm.dur:
+			dooms.remove_at(i)
+			continue
+		if randf() < 0.3:
+			aura_particle(f.position + Vector3(randf_range(-2, 2), randf_range(0.2, 2.0), randf_range(-2, 2)), dm.color)
+		if dm.tick <= 0.0:
+			dm.tick = 0.55
+			for d in _targets(f):
+				if (d.pos - f.position).length() <= dm.radius and randf() < 0.75:
+					var hit_pos: Vector3 = d.pos + Vector3(randf_range(-0.3, 0.3), 0, randf_range(-0.3, 0.3))
+					var marker := MeshInstance3D.new()
+					marker.mesh = _orb()
+					marker.material_override = ModelBuilder.mat(dm.color.darkened(0.4))
+					marker.scale = Vector3.ONE * 0.5
+					add_child(marker)
+					lobs.append({"node": marker, "marker": Node3D.new(), "start": hit_pos + Vector3(0, 9, 0), "target": hit_pos, "t": 0.0,
+						"dur": 0.35, "dmg": dm.dmg, "radius": 1.1, "color": dm.color, "owner": f, "height": 0.0,
+						"fx": {"stun": 0.35, "slow": 1.0, "knock": 0.0}, "breaks": false, "spec": {}})
 
 # ==================================================================== Voicelines
 ## Brawler sagt etwas: Sprechblase über dem Kopf + (falls vorhanden) eigene Audiodatei.
@@ -1824,8 +1909,9 @@ func _update_enemy_shots(delta: float) -> void:
 
 func _update_camera(delta: float) -> void:
 	var target := player.position
-	target.x = clamp(target.x, -3.0, 3.0)
-	target.z = clamp(target.z, -9.0, 9.0)
+	# Kamera folgt dem Spieler (nur am Arenarand begrenzt – passt sich der Kartengröße an)
+	target.x = clamp(target.x, -max(0.0, ARENA_W / 2.0 - 7.0), max(0.0, ARENA_W / 2.0 - 7.0))
+	target.z = clamp(target.z, -max(0.0, ARENA_H / 2.0 - 4.0), max(0.0, ARENA_H / 2.0 - 4.0))
 	_cam_focus = _cam_focus.lerp(target, 1.0 - exp(-delta * 6.0))
 	_shake = max(0.0, _shake - delta * 1.5)
 	var shake := Vector3(randf_range(-1, 1), randf_range(-1, 1), 0) * _shake * 0.3
@@ -2132,10 +2218,10 @@ func _update_fx(delta: float) -> void:
 		var f: Dictionary = fx[i]
 		f.t += delta
 		var k: float = clamp(f.t / f.dur, 0.0, 1.0)
-		var node: Node3D = f.node
-		if not is_instance_valid(node):
+		if not is_instance_valid(f.node):
 			fx.remove_at(i)
 			continue
+		var node: Node3D = f.node
 		match f.kind:
 			"slash":
 				var sm := node.material_override as ShaderMaterial

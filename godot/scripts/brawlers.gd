@@ -23,7 +23,106 @@ static func all() -> Array:
 			b["wclass"] = wclass[b.id]
 	_upgrade_skins(list)
 	list.append_array(RosterData.all())
+	for b in list:
+		_balance(b)
 	return list
+
+# ------------------------------------------------------------------ Balance
+# Alle Brawler einer Seltenheit sind gleich stark: Angriff pro Munition, Super-Wert und Leben werden
+# auf Rollen-Zielwerte normiert. Seltenheit gibt nur einen kleinen Bonus, Hyperlegendär einen großen.
+const RARITY_DMG := {"Selten": 1.0, "Super Selten": 1.03, "Episch": 1.06, "Mythisch": 1.09, "Legendär": 1.12, "Hyperlegendär": 1.7}
+const RARITY_HP := {"Selten": 1.0, "Super Selten": 1.02, "Episch": 1.04, "Mythisch": 1.06, "Legendär": 1.08, "Hyperlegendär": 1.45}
+const ROLE_HP := {"Panzer": 7000.0, "Nahkampf-Schütze": 5200.0, "Berserker": 5000.0, "Nahkämpfer": 4800.0, "Artillerie": 4200.0,
+	"Schadensverursacher": 4200.0, "Waffenmeister": 5000.0, "Kontrolle": 3700.0, "Schütze": 3600.0, "Unterstützer": 3600.0,
+	"Assassine": 3500.0, "Magier": 3300.0, "Werfer": 3100.0, "Scharfschütze": 2900.0}
+const ROLE_ATK := {"Panzer": 1200.0, "Nahkampf-Schütze": 1250.0, "Berserker": 1350.0, "Nahkämpfer": 1300.0, "Artillerie": 1100.0,
+	"Schadensverursacher": 1150.0, "Waffenmeister": 1300.0, "Kontrolle": 1000.0, "Schütze": 1050.0, "Unterstützer": 900.0,
+	"Assassine": 1300.0, "Magier": 1000.0, "Werfer": 950.0, "Scharfschütze": 1150.0}
+const SUPER_TARGET := 2600.0
+
+static func _atk_value(f: Dictionary) -> float:
+	if f.has("combo") and not f.combo.is_empty():
+		var t := 0.0
+		for st in f.combo:
+			t += st.dmg + (st.wave.dmg * 0.6 if st.has("wave") else 0.0)
+		return t
+	return _spec_value(f.get("attack", {}), true)
+
+## Grober Schadenswert einer Fähigkeit (für die Normierung).
+static func _spec_value(s: Dictionary, is_attack: bool) -> float:
+	var d: float = s.get("dmg", 0.0)
+	match s.get("type", ""):
+		"shot":
+			var n: float = s.get("count", 1) * s.get("burst", 1)
+			var v: float = d * n * (0.6 if s.get("count", 1) > 2 else 1.0)
+			v *= 1.0 + float(s.get("chain", 0)) * 0.4
+			if s.get("boomerang", false): v *= 1.4
+			if s.get("split", 0) > 0: v *= 1.3
+			return v
+		"lob": return d * (1.0 + float(s.get("cluster", 0)) * 0.35) + (s.zone.get("dps", 0.0) * s.zone.get("dur", 0.0) * 0.4 if s.has("zone") else 0.0)
+		"beam": return d * (1.0 + float(s.get("chain", 0)) * 0.4)
+		"mine", "dash", "leap", "awaken": return d
+		"slam": return d * s.get("waves", 1)
+		"blink": return d * s.get("hits", 1)
+		"fan": return d * s.get("count", 3) * 0.6
+		"wave": return d * (1.0 + s.get("explode", 0.0) * 0.2)
+		"nova": return d * s.get("count", 12) * s.get("burst", 1) * 0.22
+		"zone", "domain": return s.get("dps", 0.0) * s.get("dur", 3.0) * 0.5
+		"turret": return d * s.get("dur", 8.0) / s.get("interval", 0.6) * 0.35
+		"orbit": return d * s.get("count", 3) * s.get("dur", 6.0) * 0.25
+		"spin": return d * s.get("dur", 2.0) * 4.0 * 0.5
+		"meteor": return d * s.get("count", 5) * 0.55
+		"spirit": return d * s.get("dur", 7.0) / s.get("interval", 0.14) * 0.35
+		"rewind": return d
+		"doom": return d * s.get("dur", 8.0) / 0.55 * 0.4
+	return 0.0
+
+static func _scale_spec(s: Dictionary, k: float) -> void:
+	for key in ["dmg", "dps"]:
+		if s.has(key):
+			s[key] = round(float(s[key]) * k)
+	for key in ["zone", "wave"]:
+		if s.has(key) and s[key] is Dictionary:
+			_scale_spec(s[key], k)
+	if s.has("combo"):
+		for st in s.combo:
+			_scale_spec(st, k)
+	if s.has("sup") and s.sup is Dictionary:
+		_scale_spec(s.sup, k)
+
+static func _balance(b: Dictionary) -> void:
+	var rar: String = b.get("rarity", "Selten")
+	var rd: float = RARITY_DMG.get(rar, 1.0)
+	b.hp = round(ROLE_HP.get(b.role, 4000.0) * RARITY_HP.get(rar, 1.0) / 50.0) * 50.0
+	var atk_target: float = ROLE_ATK.get(b.role, 1100.0) * rd
+	var evolving: bool = b.forms.size() > 1 and not b.get("no_evolve", false)
+	var base_k := 1.0
+	for i in b.forms.size():
+		var f: Dictionary = b.forms[i]
+		var awakened: bool = i > 0 and b.forms[0].super.get("type", "") == "awaken"
+		var k := base_k
+		if not evolving or i == 0:
+			var val: float = _atk_value(f)
+			if val > 0.0:
+				k = clamp(atk_target * (1.35 if awakened else 1.0) / val, 0.4, 2.5)
+			if i == 0:
+				base_k = k
+		if f.has("combo"):
+			for st in f.combo:
+				_scale_spec(st, k)
+		if f.has("attack"):
+			_scale_spec(f.attack, k)
+		# Super normieren (reine Verstärkungen/Mauern bleiben unverändert)
+		var sp: Dictionary = f.super
+		var sv: float = _spec_value(sp, false) if sp.has("type") else (sp.get("dmg", 0.0) * (1.0 + sp.get("explode", 0.0) * 0.2))
+		if sv > 0.0 and not sp.get("type", "") in ["awaken"]:
+			var sk: float = clamp(SUPER_TARGET * rd * (1.2 if awakened else 1.0) / sv, 0.5, 2.0) if not evolving or i == 0 else base_k
+			_scale_spec(sp, sk)
+	if b.has("stand_spirit"):
+		var ss: Dictionary = b.stand_spirit
+		var sv2: float = _spec_value(ss, false)
+		if sv2 > 0.0:
+			_scale_spec(ss, clamp(SUPER_TARGET * 0.8 * rd / sv2, 0.4, 2.0))
 
 ## Bestehende Skins bekommen echte Formänderungen (Kopfbedeckung, Gesicht, Waffe, Accessoires)
 ## + je ein zusätzlicher Themen-Skin. IDs bleiben gleich, damit gekaufte Skins erhalten bleiben.
