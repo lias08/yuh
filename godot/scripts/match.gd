@@ -11,7 +11,8 @@ var player: Fighter
 var dummies: Array = []
 var waves: Array = []
 var enemy_shots: Array = []
-var walls: Array = []        # Rect2 in der XZ-Ebene
+var walls: Array = []        # Rect2 in der XZ-Ebene (Kollision)
+var wall_blocks: Array = []  # {rect, nodes, breakable}
 var fx: Array = []           # kurzlebige Effekt-Meshes {node, t, dur, kind, ...}
 var cam: Camera3D
 var _cam_focus := Vector3.ZERO
@@ -25,6 +26,8 @@ var hud_root: Control
 var move_joy: JoyDraw
 var atk_joy: JoyDraw
 var sup_joy: JoyDraw
+var gad_btn: JoyDraw
+var gad_label: Label
 var touches := {}            # index -> {"zone": String, "start": Vector2, "pos": Vector2, "time": float}
 var bars := {}               # Objekt -> Control
 var form_label: Label
@@ -154,6 +157,11 @@ void fragment() {
 	_add_wall(Rect2(-1.5, -9, 3, 1), wall_col, top_col)
 	_add_wall(Rect2(-8, -9, 1, 3), wall_col, top_col)
 	_add_wall(Rect2(7, -9, 1, 3), wall_col, top_col)
+	# Zerstörbare Kisten-Reihen (Supers & Explosionen können sie sprengen)
+	_add_wall(Rect2(-3, -3.5, 2, 1), wall_col, top_col, true)
+	_add_wall(Rect2(1, -3.5, 2, 1), wall_col, top_col, true)
+	_add_wall(Rect2(-6, 5, 1, 2), wall_col, top_col, true)
+	_add_wall(Rect2(5, 5, 1, 2), wall_col, top_col, true)
 	# Büsche & Deko (nur Optik)
 	for p in [Vector3(-7, 0, 7), Vector3(7, 0, 7), Vector3(-6, 0, -1), Vector3(6, 0, -1)]:
 		# Buschgruppe aus mehreren flauschigen Kugeln
@@ -172,18 +180,67 @@ void fragment() {
 		ModelBuilder.part(self, "cyl", tp + Vector3(0, 0.6, 0), Vector3(0.3, 1.2, 0.3), Color(0.5, 0.33, 0.2))
 		ModelBuilder.part(self, "sphere", tp + Vector3(0, 1.7, 0), Vector3.ONE * randf_range(1.3, 1.8), Color(0.28, 0.62, 0.32))
 
-func _add_wall(r: Rect2, side: Color, top: Color) -> void:
-	walls.append(r)
-	# Wand aus einzelnen, abgerundeten Blöcken mit heller Deckplatte (leicht unregelmäßig)
+func _add_wall(r: Rect2, side: Color, top: Color, breakable := false) -> void:
+	# Wand aus einzelnen, abgerundeten Blöcken mit heller Deckplatte (leicht unregelmäßig).
+	# Jeder Block hat eigene Kollision und kann (falls zerstörbar) einzeln gesprengt werden.
 	var nx: int = max(1, int(round(r.size.x)))
 	var nz: int = max(1, int(round(r.size.y)))
 	for ix in nx:
 		for iz in nz:
-			var c := Vector3(r.position.x + (ix + 0.5) * r.size.x / nx, 0, r.position.y + (iz + 0.5) * r.size.y / nz)
-			var h := 1.15 + fmod(abs(c.x * 3.7 + c.z * 1.3), 0.25)
-			var shade := side.darkened(fmod(abs(c.x * 1.7 + c.z * 2.9), 0.12))
-			ModelBuilder.part(self, "rbox", c + Vector3(0, h * 0.5, 0), Vector3(r.size.x / nx, h, r.size.y / nz), shade)
-			ModelBuilder.part(self, "rbox", c + Vector3(0, h + 0.04, 0), Vector3(r.size.x / nx + 0.06, 0.16, r.size.y / nz + 0.06), top, Vector3.ZERO, false)
+			var bw := r.size.x / nx
+			var bd := r.size.y / nz
+			var rect := Rect2(r.position.x + ix * bw, r.position.y + iz * bd, bw, bd)
+			var c := Vector3(rect.position.x + bw / 2.0, 0, rect.position.y + bd / 2.0)
+			var nodes: Array = []
+			if breakable:
+				# Holzkiste: hell, mit dunklen Bändern
+				nodes.append(ModelBuilder.part(self, "rbox", c + Vector3(0, 0.5, 0), Vector3(bw * 0.94, 1.0, bd * 0.94), Color(0.85, 0.58, 0.32)))
+				nodes.append(ModelBuilder.part(self, "box", c + Vector3(0, 0.5, 0), Vector3(bw * 0.97, 0.14, bd * 0.97), Color(0.55, 0.35, 0.2), Vector3.ZERO, false))
+				nodes.append(ModelBuilder.part(self, "box", c + Vector3(0, 0.92, 0), Vector3(bw * 0.97, 0.1, bd * 0.97), Color(0.55, 0.35, 0.2), Vector3.ZERO, false))
+			else:
+				var h := 1.15 + fmod(abs(c.x * 3.7 + c.z * 1.3), 0.25)
+				var shade := side.darkened(fmod(abs(c.x * 1.7 + c.z * 2.9), 0.12))
+				nodes.append(ModelBuilder.part(self, "rbox", c + Vector3(0, h * 0.5, 0), Vector3(bw, h, bd), shade))
+				nodes.append(ModelBuilder.part(self, "rbox", c + Vector3(0, h + 0.04, 0), Vector3(bw + 0.06, 0.16, bd + 0.06), top, Vector3.ZERO, false))
+			wall_blocks.append({"rect": rect, "nodes": nodes, "breakable": breakable, "color": Color(0.85, 0.58, 0.32) if breakable else side})
+	_rebuild_walls()
+
+func _rebuild_walls() -> void:
+	walls.clear()
+	for b in wall_blocks:
+		walls.append(b.rect)
+
+## Zerstört alle zerstörbaren Blöcke im Radius. Rückgabe: Anzahl.
+func break_walls(pos: Vector3, radius: float) -> int:
+	var n := 0
+	for i in range(wall_blocks.size() - 1, -1, -1):
+		var b: Dictionary = wall_blocks[i]
+		if not b.breakable:
+			continue
+		var c := Vector3(b.rect.position.x + b.rect.size.x / 2.0, 0, b.rect.position.y + b.rect.size.y / 2.0)
+		if Vector2(c.x - pos.x, c.z - pos.z).length() > radius + 0.6:
+			continue
+		for node in b.nodes:
+			node.queue_free()
+		_burst(c + Vector3(0, 0.6, 0), b.color, 18, 6.0, 0.16)
+		_burst(c + Vector3(0, 0.4, 0), Color(0.9, 0.85, 0.75), 8, 2.0, 0.3)
+		wall_blocks.remove_at(i)
+		n += 1
+	if n > 0:
+		_rebuild_walls()
+		Game.play_sfx("explosion", 0.5, 1.4)
+		_shake = max(_shake, 0.25)
+	return n
+
+func _block_at(p: Vector3) -> Dictionary:
+	for b in wall_blocks:
+		if b.rect.has_point(Vector2(p.x, p.z)):
+			return b
+	return {}
+
+## Statuseffekte eines Angriffs (Betäubung, Verlangsamung, Rückstoß).
+static func fx_of(spec: Dictionary) -> Dictionary:
+	return {"stun": spec.get("stun", 0.0), "slow": spec.get("slow", 0.0), "knock": spec.get("knock", 0.0)}
 
 func _spawn_dummy(pos: Vector3, kind: String) -> void:
 	var color := Color(1, 0.3, 0.3) if kind != "shooter" else Color(0.3, 0.5, 1.0)
@@ -194,6 +251,7 @@ func _spawn_dummy(pos: Vector3, kind: String) -> void:
 	add_child(rig.root)
 	var d := {"rig": rig, "node": rig.root, "pos": pos, "home": pos, "kind": kind, "hp": 40000.0, "max": 40000.0,
 		"last_hit": -99.0, "dir": 1.0, "shoot_t": 2.0, "radius": 0.5, "shake": 0.0,
+		"stun_until": 0.0, "slow_until": 0.0, "knock": Vector3.ZERO, "stun_fx": null,
 		"name": {"static": "Puppe", "walker": "Läufer-Puppe", "shooter": "Schützen-Puppe"}[kind]}
 	dummies.append(d)
 
@@ -252,8 +310,10 @@ func melee_swing(f: Fighter, step: Dictionary) -> void:
 			continue
 		if dist > 0.3 and rad_to_deg(f.aim_dir.angle_to(to)) > step.arc * 0.5 + 10.0:
 			continue
-		_damage_dummy(d, step.dmg, f)
+		_damage_dummy(d, step.dmg, f, fx_of(step), origin)
 		hits += 1
+	if step.get("break", false):
+		break_walls(origin + f.aim_dir * step.range * 0.6, step.range * 0.6)
 	_slash_fx(origin, f.aim_dir, step.range, step.arc, step.color, step.dir)
 	Game.play_sfx("swoosh", 0.7, 1.1 if step.dir == "rtl" else 1.0)
 	if hits > 0:
@@ -265,24 +325,43 @@ func attack_range(f: Dictionary) -> float:
 	return atk.range if not atk.is_empty() else f.combo[0].range
 
 ## Projektil erzeugen (Klingenwelle, Kugel, Lichtkugel, Stern).
-func _spawn_projectile(f: Fighter, dir: Vector3, dmg: float, rng: float, speed: float, width: float, color: Color, pierce: bool, explode: float, visual: String) -> MeshInstance3D:
+func _spawn_projectile(f: Fighter, dir: Vector3, dmg: float, rng: float, speed: float, width: float, color: Color, pierce: bool, explode: float, visual: String, spec: Dictionary = {}) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
+	var core := MeshInstance3D.new()
+	var core_mat := StandardMaterial3D.new()
+	core_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	core_mat.albedo_color = color.lerp(Color.WHITE, 0.55)
+	core.material_override = core_mat
+	core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.add_child(core)
 	match visual:
 		"crescent":
-			mi.mesh = _crescent_mesh()
-			mi.scale = Vector3(width * 1.6, 1.0, width * 1.0)
+			core.mesh = _crescent_mesh()
+			core.scale = Vector3(width * 1.6, 0.5, width * 0.8)
+			var cm := StandardMaterial3D.new()
+			cm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			cm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			cm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+			cm.cull_mode = BaseMaterial3D.CULL_DISABLED
+			cm.albedo_color = Color(color.r, color.g, color.b, 0.9)
+			core.material_override = cm
+			for k in 3:
+				_glow_sprite(mi, Color(color.r, color.g, color.b, 0.55), width * 2.2).position = Vector3((k - 1) * width * 0.9, 0, 0.1)
 		"bullet":
-			mi.mesh = _orb()
-			mi.scale = Vector3(width * 1.2, width * 1.2, width * 2.8)
+			core.mesh = _orb()
+			core.scale = Vector3(width * 0.8, width * 0.8, width * 2.2)
+			_glow_sprite(mi, Color(color.r, color.g, color.b, 0.8), width * 3.0)
 		_:
-			mi.mesh = _orb()
-			mi.scale = Vector3.ONE * width * 2.0
-	mi.material_override = _fx_mat(Color(color.r, color.g, color.b, 0.9))
+			core.mesh = _orb()
+			core.scale = Vector3.ONE * width * 1.3
+			_glow_sprite(mi, Color(color.r, color.g, color.b, 0.85), width * 4.0)
+	mi.set_meta("trail", _trail(mi, color, width * 2.2))
 	mi.position = f.position + Vector3(0, 0.75, 0) + dir * 0.6
 	mi.rotation.y = atan2(-dir.x, -dir.z)
 	add_child(mi)
 	waves.append({"node": mi, "dir": dir, "speed": speed, "range": rng, "travel": 0.0, "dmg": dmg, "width": width,
-		"hit": [], "pierce": pierce, "explode": explode, "color": color, "owner": f, "visual": visual})
+		"hit": [], "pierce": pierce, "explode": explode, "color": color, "owner": f, "visual": visual,
+		"fx": fx_of(spec), "breaks": spec.get("break", false)})
 	return mi
 
 func _orb() -> SphereMesh:
@@ -293,7 +372,7 @@ func _orb() -> SphereMesh:
 
 ## Klingenwelle (aus Kombo oder Super).
 func spawn_wave(f: Fighter, w: Dictionary, is_super: bool) -> void:
-	var mi := _spawn_projectile(f, f.aim_dir, w.dmg, w.range, w.speed, w.width, w.color, w.get("pierce", true), w.get("explode", 0.0), "crescent")
+	var mi := _spawn_projectile(f, f.aim_dir, w.dmg, w.range, w.speed, w.width, w.color, w.get("pierce", true), w.get("explode", 0.0), "crescent", w)
 	Game.play_sfx("wave", 0.8 if is_super else 0.5, 1.0 if is_super else 1.3)
 	if is_super:
 		_shake = max(_shake, 0.25)
@@ -314,7 +393,7 @@ func _volley(f: Fighter, s: Dictionary, dir: Vector3, is_super: bool) -> void:
 	for i in n:
 		var a: float = lerp(-spread / 2.0, spread / 2.0, float(i) / (n - 1)) if n > 1 else 0.0
 		var d := dir.rotated(Vector3.UP, deg_to_rad(a))
-		_spawn_projectile(f, d, s.dmg, s.range, s.speed, s.get("width", 0.25), s.color, s.get("pierce", false), 0.0, s.get("visual", "bullet"))
+		_spawn_projectile(f, d, s.dmg, s.range, s.speed, s.get("width", 0.25), s.color, s.get("pierce", false), 0.0, s.get("visual", "bullet"), s)
 	_burst(f.position + Vector3(0, 0.8, 0) + dir * 0.8, s.color, 8, 3.0, 0.08)
 	Game.play_sfx("shot", 0.7 if is_super else 0.5, 0.8 if n > 2 else 1.1)
 
@@ -330,13 +409,15 @@ func throw_lob(f: Fighter, s: Dictionary, dir: Vector3, is_super: bool) -> void:
 	add_child(bomb)
 	var marker := MeshInstance3D.new()
 	marker.mesh = _sector_mesh(1.0, 359.9, 0.8)
-	marker.material_override = _fx_mat(Color(s.color.r, s.color.g, s.color.b, 0.6))
+	marker.material_override = _fx_mat(Color(s.color.r, s.color.g, s.color.b, 0.45))
 	marker.position = target + Vector3(0, 0.06, 0)
 	marker.scale = Vector3.ONE * s.radius
 	add_child(marker)
 	var start := f.position + Vector3(0, 1.0, 0)
 	lobs.append({"node": bomb, "marker": marker, "start": start, "target": target, "t": 0.0,
-		"dur": clamp(dist / 9.0, 0.45, 1.0), "dmg": s.dmg, "radius": s.radius, "color": s.color, "owner": f, "height": 1.8 + dist * 0.2})
+		"dur": clamp(dist / 9.0, 0.45, 1.0), "dmg": s.dmg, "radius": s.radius, "color": s.color, "owner": f, "height": 1.8 + dist * 0.2,
+		"fx": fx_of(s), "breaks": s.get("break", false)})
+	_trail(bomb, Color(1, 0.7, 0.3), 0.5)
 	Game.play_sfx("swoosh", 0.7, 0.8)
 
 func _update_lobs(delta: float) -> void:
@@ -349,14 +430,15 @@ func _update_lobs(delta: float) -> void:
 		l.node.position = p
 		l.node.rotate_x(delta * 8.0)
 		if k >= 1.0:
-			_explode(l.target, l.radius, l.dmg, l.color, l.owner)
+			_explode(l.target, l.radius, l.dmg, l.color, l.owner, l.fx, l.breaks)
 			l.node.queue_free()
 			l.marker.queue_free()
 			lobs.remove_at(i)
 
 ## Sturmangriff: der Brawler rast nach vorne und trifft jeden Gegner auf dem Weg einmal.
 func dash(f: Fighter, s: Dictionary, dir: Vector3) -> void:
-	dashes.append({"f": f, "dir": dir, "left": s.range, "speed": s.speed, "dmg": s.dmg, "color": s.color, "hit": []})
+	dashes.append({"f": f, "dir": dir, "left": s.range, "speed": s.speed, "dmg": s.dmg, "color": s.color, "hit": [], "fx": fx_of(s), "breaks": s.get("break", false)})
+	_trail(f, s.color, 0.9).set_meta("dash_trail", true)
 	Game.play_sfx("charge", 0.7, 1.4)
 	_shake = 0.2
 
@@ -366,6 +448,8 @@ func _update_dashes(delta: float) -> void:
 		var f: Fighter = d.f
 		var step: float = min(d.left, d.speed * delta)
 		var before := f.position
+		if d.breaks:
+			break_walls(f.position + d.dir * 0.9, 0.7)
 		f.dash_move(d.dir * step)
 		d.left -= step
 		_burst(f.position + Vector3(0, 0.3, 0), Color(0.9, 0.85, 0.7), 2, 1.5, 0.12)
@@ -374,11 +458,16 @@ func _update_dashes(delta: float) -> void:
 				continue
 			if (dm.pos - f.position).length() < 1.2:
 				d.hit.append(dm)
-				_damage_dummy(dm, d.dmg, f)
+				_damage_dummy(dm, d.dmg, f, d.fx, f.position - d.dir)
 				dm.shake = 0.4
 				_burst(dm.pos + Vector3(0, 1, 0), d.color, 20, 6.0, 0.15)
 		if d.left <= 0.0 or (f.position - before).length() < step * 0.2:
 			_ring_fx(f.position, 1.8, d.color, 0.3)
+			for c in f.get_children():
+				if c is CPUParticles3D and c.has_meta("dash_trail"):
+					c.emitting = false
+					c.reparent(self)
+					fx.append({"node": c, "t": 0.0, "dur": 0.5, "kind": "particles"})
 			dashes.remove_at(i)
 
 ## Rundumschlag: Projektile in alle Richtungen (mehrere Wellen).
@@ -389,9 +478,47 @@ func nova(f: Fighter, s: Dictionary) -> void:
 			var n: int = int(s.count)
 			for i in n:
 				var a := TAU * i / n + b * PI / n
-				_spawn_projectile(f, Vector3(cos(a), 0, sin(a)), s.dmg, s.range, s.speed, s.get("width", 0.3), s.color, true, 0.0, "orb")
+				_spawn_projectile(f, Vector3(cos(a), 0, sin(a)), s.dmg, s.range, s.speed, s.get("width", 0.3), s.color, true, 0.0, "orb", s)
 			_ring_fx(f.position, 2.0, s.color, 0.3)
 			Game.play_sfx("wave", 0.6, 1.5))
+
+## Gadgets: Teleport, Heilung, Schild, Betäubungs-Impuls, Sofort-Nachladen, Tempo-Schub.
+func use_gadget(f: Fighter, g: Dictionary) -> void:
+	var c: Color = g.get("color", Color(0.4, 1.0, 0.5))
+	match g.type:
+		"blink":
+			_burst(f.position + Vector3(0, 0.9, 0), c, 20, 3.0, 0.2)
+			f.position = move_circle(f.position, f.aim_dir * g.get("range", 4.0), f.radius)
+			_burst(f.position + Vector3(0, 0.9, 0), c, 24, 4.0, 0.2)
+			_ring_fx(f.position, 1.6, c, 0.3)
+		"heal":
+			f.heal(f.max_hp * g.get("amount", 0.35))
+			_damage_number(f.position + Vector3(0, 2.6, 0), f.max_hp * g.get("amount", 0.35), Color(0.4, 1.0, 0.5))
+			for i in 3:
+				aura_particle(f.position + Vector3(randf_range(-0.5, 0.5), 0.5, randf_range(-0.5, 0.5)), Color(0.4, 1.0, 0.5, 1.0))
+			_ring_fx(f.position, 2.0, Color(0.4, 1.0, 0.5), 0.4)
+		"shield":
+			f.shield_until = f.now() + g.get("duration", 3.0)
+			var sh := _glow_sprite(f, Color(c.r, c.g, c.b, 0.45), 2.8)
+			sh.position = Vector3(0, 1.0, 0)
+			fx.append({"node": sh, "t": 0.0, "dur": g.get("duration", 3.0), "kind": "particles"})
+		"stun_pulse":
+			for d in dummies:
+				if (d.pos - f.position).length() <= g.get("range", 4.0):
+					_damage_dummy(d, g.get("dmg", 400.0), f, {"stun": g.get("stun", 1.5)}, f.position)
+			_ring_fx(f.position, g.get("range", 4.0), c, 0.4)
+			_burst(f.position + Vector3(0, 0.8, 0), c, 30, 7.0, 0.2)
+			_shake = max(_shake, 0.3)
+		"reload":
+			f.ammo = float(f.def.ammo)
+			_burst(f.position + Vector3(0, 1.0, 0), Color(1, 0.75, 0.3), 16, 3.0, 0.18)
+		"speed":
+			f.speed_until = f.now() + g.get("duration", 3.0)
+			var tr := _trail(f, c, 0.6)
+			tr.position = Vector3(0, 0.5, 0)
+			fx.append({"node": tr, "t": 0.0, "dur": g.get("duration", 3.0), "kind": "particles"})
+	Game.play_sfx("ready", 0.8, 1.3)
+	show_banner(g.name.to_upper())
 
 func charge_effect(f: Fighter, sup: Dictionary) -> void:
 	Game.play_sfx("charge", 1.0)
@@ -402,7 +529,20 @@ func charge_effect(f: Fighter, sup: Dictionary) -> void:
 			_burst(f.position + Vector3(0, 1.0, 0), sup.color, 10, -3.0, 0.15))
 	_shake = 0.2
 
-func _damage_dummy(d: Dictionary, amount: float, f: Fighter) -> void:
+func _damage_dummy(d: Dictionary, amount: float, f: Fighter, efx: Dictionary = {}, from := Vector3.INF) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if efx.get("stun", 0.0) > 0.0:
+		var first: bool = d.stun_until < now
+		d.stun_until = max(d.stun_until, now + efx.stun)
+		if first:
+			_damage_number(d.pos + Vector3(0, 3.0, 0), -1, Color(1, 0.9, 0.3))
+	if efx.get("slow", 0.0) > 0.0:
+		d.slow_until = max(d.slow_until, now + efx.slow)
+	if efx.get("knock", 0.0) > 0.0 and from != Vector3.INF:
+		var push: Vector3 = d.pos - from
+		push.y = 0
+		if push.length() > 0.01:
+			d.knock = push.normalized() * efx.knock
 	d.hp -= amount
 	d.last_hit = Time.get_ticks_msec() / 1000.0
 	d.shake = 0.2
@@ -416,14 +556,17 @@ func _damage_dummy(d: Dictionary, amount: float, f: Fighter) -> void:
 		d.hp = d.max
 		_burst(d.pos + Vector3(0, 0.9, 0), Color(1, 0.8, 0.3), 30, 6.0, 0.18)
 
-func _explode(pos: Vector3, radius: float, dmg: float, color: Color, f: Fighter) -> void:
+func _explode(pos: Vector3, radius: float, dmg: float, color: Color, f: Fighter, efx: Dictionary = {}, breaks := false) -> void:
 	for d in dummies:
 		var to: Vector3 = d.pos - pos
 		to.y = 0
 		if to.length() <= radius + d.radius:
-			_damage_dummy(d, dmg, f)
-	_burst(pos + Vector3(0, 0.6, 0), color, 60, 9.0, 0.3)
-	_burst(pos + Vector3(0, 0.6, 0), Color.WHITE, 30, 5.0, 0.25)
+			_damage_dummy(d, dmg, f, efx, pos)
+	if breaks:
+		break_walls(pos, radius)
+	_burst(pos + Vector3(0, 0.6, 0), color, 40, 9.0, 0.28)
+	_burst(pos + Vector3(0, 0.6, 0), Color.WHITE, 16, 4.0, 0.4)
+	_burst(pos + Vector3(0, 0.3, 0), Color(0.35, 0.3, 0.3), 10, 2.0, 0.5)
 	_ring_fx(pos, radius, color, 0.45)
 	_ring_fx(pos, radius * 0.6, Color.WHITE, 0.3)
 	_shake = 0.6
@@ -460,6 +603,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			player.try_attack(auto_aim(attack_range(player.form()) + 3.0))
 		elif event.keycode == KEY_E:
 			player.try_super(auto_aim(12.0))
+		elif event.keycode == KEY_G:
+			player.try_gadget()
 		elif event.keycode == KEY_ESCAPE:
 			emit_signal("exit_requested")
 
@@ -480,14 +625,24 @@ func auto_aim(max_range: float) -> Vector3:
 func _update_dummies(delta: float) -> void:
 	var now := Time.get_ticks_msec() / 1000.0
 	for d in dummies:
-		if d.kind == "walker":
-			d.pos.x += d.dir * 1.6 * delta
+		var stunned: bool = now < d.stun_until
+		var slow_mul := 0.4 if now < d.slow_until else 1.0
+		_update_stun_fx(d, stunned, now)
+		# Rückstoß (gleitet aus, Wände stoppen)
+		if d.knock.length() > 0.01:
+			var k: Vector3 = d.knock * min(1.0, delta * 10.0)
+			d.pos = move_circle(d.pos, k, 0.45)
+			d.knock -= k
+		if stunned:
+			pass
+		elif d.kind == "walker":
+			d.pos.x += d.dir * 1.6 * slow_mul * delta
 			if d.pos.x > d.home.x + 3.0:
 				d.dir = -1.0
 			elif d.pos.x < d.home.x - 3.0:
 				d.dir = 1.0
 		elif d.kind == "shooter" and player.alive:
-			d.shoot_t -= delta
+			d.shoot_t -= delta * slow_mul
 			var to: Vector3 = player.position - d.pos
 			to.y = 0
 			d.node.rotation.y = atan2(-to.x, -to.z)
@@ -499,6 +654,26 @@ func _update_dummies(delta: float) -> void:
 		d.shake = max(0.0, d.shake - delta)
 		d.node.position = d.pos + Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)) * d.shake * 0.25
 		d.rig.body.rotation.z = sin(now * 30.0) * d.shake * 0.6
+		# Verlangsamt: leicht bläulich schimmern
+		if now < d.slow_until and randf() < 0.15:
+			aura_particle(d.pos + Vector3(randf_range(-0.4, 0.4), randf_range(0.3, 1.6), 0), Color(0.5, 0.8, 1.0, 0.8))
+
+## Kreisende Sterne über dem Kopf, solange eine Puppe betäubt ist.
+func _update_stun_fx(d: Dictionary, stunned: bool, now: float) -> void:
+	if stunned and d.stun_fx == null:
+		var n := Node3D.new()
+		for i in 3:
+			var g := _glow_sprite(n, Color(1, 0.9, 0.3, 1.0), 0.45)
+			g.position = Vector3(cos(i * TAU / 3.0), 0, sin(i * TAU / 3.0)) * 0.45
+		add_child(n)
+		d.stun_fx = n
+	if d.stun_fx != null:
+		if stunned:
+			d.stun_fx.position = d.pos + Vector3(0, 2.25, 0)
+			d.stun_fx.rotation.y = now * 6.0
+		else:
+			d.stun_fx.queue_free()
+			d.stun_fx = null
 
 func _update_waves(delta: float) -> void:
 	for i in range(waves.size() - 1, -1, -1):
@@ -508,9 +683,14 @@ func _update_waves(delta: float) -> void:
 		var nxt: Vector3 = node.position + w.dir * step
 		var done := false
 		if blocked(nxt):
-			done = true
-			if w.explode > 0.0:
-				_explode(node.position, w.explode, w.dmg * 0.5, w.color, w.owner)
+			# Wandbrecher fliegen durch zerstörbare Blöcke hindurch
+			var blk := _block_at(nxt)
+			if w.breaks and not blk.is_empty() and blk.breakable:
+				break_walls(nxt, 0.3)
+			else:
+				done = true
+				if w.explode > 0.0:
+					_explode(node.position, w.explode, w.dmg * 0.5, w.color, w.owner, w.fx, w.breaks)
 		else:
 			for d in dummies:
 				if d in w.hit:
@@ -519,33 +699,38 @@ func _update_waves(delta: float) -> void:
 				to.y = 0
 				if to.length() <= w.width + d.radius:
 					w.hit.append(d)
-					_damage_dummy(d, w.dmg, w.owner)
+					_damage_dummy(d, w.dmg, w.owner, w.fx, nxt - w.dir)
 					if not w.pierce:
 						done = true
 						if w.explode > 0.0:
-							_explode(d.pos, w.explode, w.dmg * 0.5, w.color, w.owner)
+							_explode(d.pos, w.explode, w.dmg * 0.5, w.color, w.owner, w.fx, w.breaks)
 						break
 		node.position = nxt
 		w.travel += step
 		if not done and w.travel >= w.range:
 			done = true
 			if w.explode > 0.0:
-				_explode(nxt, w.explode, w.dmg * 0.5, w.color, w.owner)
-		var fade: float = clamp((w.range - w.travel) / 2.0, 0.2, 1.0)
-		(node.material_override as StandardMaterial3D).albedo_color.a = 0.85 * fade
-		if randf() < 0.6:
-			_burst(node.position, w.color, 2, 1.0, 0.12)
+				_explode(nxt, w.explode, w.dmg * 0.5, w.color, w.owner, w.fx, w.breaks)
 		if done:
+			# Schweif ausklingen lassen, Projektil entfernen
+			var tr: CPUParticles3D = node.get_meta("trail")
+			if is_instance_valid(tr):
+				tr.emitting = false
+				tr.reparent(self)
+				fx.append({"node": tr, "t": 0.0, "dur": 0.5, "kind": "particles"})
+			_burst(node.position, w.color, 6, 2.5, 0.1)
 			node.queue_free()
 			waves.remove_at(i)
 
 func _spawn_enemy_shot(pos: Vector3, dir: Vector3) -> void:
 	var mi := MeshInstance3D.new()
 	mi.mesh = ModelBuilder.mesh("sphere")
-	mi.material_override = _fx_mat(Color(0.4, 0.6, 1.0, 0.95))
-	mi.scale = Vector3.ONE * 0.4
+	mi.material_override = _fx_mat(Color(0.75, 0.85, 1.0, 1.0))
+	mi.scale = Vector3.ONE * 0.3
 	mi.position = pos
 	add_child(mi)
+	var g := _glow_sprite(mi, Color(0.4, 0.6, 1.0, 0.9), 4.0)
+	g.scale = Vector3.ONE * 4.0
 	enemy_shots.append({"node": mi, "dir": dir, "travel": 0.0})
 	Game.play_sfx("shot", 0.4)
 
@@ -626,8 +811,14 @@ func _sector_mesh(radius: float, arc: float, inner := 0.0) -> ArrayMesh:
 		var a1: float = lerp(-half, half, float(i + 1) / seg)
 		var o0 := Vector3(sin(a0), 0, -cos(a0))
 		var o1 := Vector3(sin(a1), 0, -cos(a1))
-		st.add_vertex(o0 * inner); st.add_vertex(o0 * radius); st.add_vertex(o1 * radius)
-		st.add_vertex(o0 * inner); st.add_vertex(o1 * radius); st.add_vertex(o1 * inner)
+		var u0 := float(i) / seg
+		var u1 := float(i + 1) / seg
+		st.set_uv(Vector2(u0, 0)); st.add_vertex(o0 * inner)
+		st.set_uv(Vector2(u0, 1)); st.add_vertex(o0 * radius)
+		st.set_uv(Vector2(u1, 1)); st.add_vertex(o1 * radius)
+		st.set_uv(Vector2(u0, 0)); st.add_vertex(o0 * inner)
+		st.set_uv(Vector2(u1, 1)); st.add_vertex(o1 * radius)
+		st.set_uv(Vector2(u1, 0)); st.add_vertex(o1 * inner)
 	var m := st.commit()
 	_sector_cache[key] = m
 	return m
@@ -657,61 +848,218 @@ func _crescent_mesh() -> ArrayMesh:
 	_crescent = st.commit()
 	return _crescent
 
-func _slash_fx(origin: Vector3, dir: Vector3, radius: float, arc: float, color: Color, swing: String) -> void:
-	var mi := MeshInstance3D.new()
-	mi.mesh = _sector_mesh(radius, min(arc, 359.0), radius * 0.55)
-	mi.material_override = _fx_mat(Color(color.r, color.g, color.b, 0.7))
-	mi.position = origin + Vector3(0, 0.6, 0)
-	mi.rotation.y = atan2(-dir.x, -dir.z)
-	add_child(mi)
-	fx.append({"node": mi, "t": 0.0, "dur": 0.22, "kind": "slash", "spin": (0.35 if swing == "ltr" else -0.35) if swing != "over" else 0.0, "base_yaw": mi.rotation.y})
-	_burst(origin + Vector3(0, 0.7, 0) + dir * radius * 0.8, color, 8, 3.0, 0.1)
+# ---------------------------------------------------------------- weiche Effekte
+var _glow_tex: GradientTexture2D
+var _pmat_add: StandardMaterial3D
+var _pmat_alpha: StandardMaterial3D
+var _slash_shader: Shader
+var _ring_shader: Shader
+var _glow_quad: QuadMesh
 
-func _ring_fx(pos: Vector3, radius: float, color: Color, dur: float) -> void:
+## Weiche, runde Leuchttextur (Mitte hell, Rand transparent).
+func _glow() -> GradientTexture2D:
+	if _glow_tex == null:
+		var g := Gradient.new()
+		g.set_color(0, Color(1, 1, 1, 1))
+		g.set_color(1, Color(1, 1, 1, 0))
+		g.add_point(0.35, Color(1, 1, 1, 0.6))
+		_glow_tex = GradientTexture2D.new()
+		_glow_tex.gradient = g
+		_glow_tex.fill = GradientTexture2D.FILL_RADIAL
+		_glow_tex.fill_from = Vector2(0.5, 0.5)
+		_glow_tex.fill_to = Vector2(1.0, 0.5)
+		_glow_tex.width = 64
+		_glow_tex.height = 64
+	return _glow_tex
+
+## Material für Partikel (Billboard, weich, additiv oder normal überblendet).
+func _particle_mat(additive := true) -> StandardMaterial3D:
+	if additive and _pmat_add != null:
+		return _pmat_add
+	if not additive and _pmat_alpha != null:
+		return _pmat_alpha
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD if additive else BaseMaterial3D.BLEND_MODE_MIX
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	m.vertex_color_use_as_albedo = true
+	m.albedo_texture = _glow()
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.disable_receive_shadows = true
+	if additive: _pmat_add = m
+	else: _pmat_alpha = m
+	return m
+
+## Einzelnes leuchtendes Billboard (z.B. Glühen um Projektile).
+func _glow_sprite(parent: Node3D, color: Color, size: float) -> MeshInstance3D:
+	if _glow_quad == null:
+		_glow_quad = QuadMesh.new()
+		_glow_quad.size = Vector2.ONE
 	var mi := MeshInstance3D.new()
-	mi.mesh = _sector_mesh(1.0, 359.9, 0.85)
-	mi.material_override = _fx_mat(Color(color.r, color.g, color.b, 0.8))
+	mi.mesh = _glow_quad
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	m.albedo_texture = _glow()
+	m.albedo_color = color
+	m.disable_receive_shadows = true
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.scale = Vector3.ONE * size
+	parent.add_child(mi)
+	return mi
+
+## Partikel-Schweif, der einem Objekt folgt (in Weltkoordinaten).
+func _trail(parent: Node3D, color: Color, size: float) -> CPUParticles3D:
+	var p := CPUParticles3D.new()
+	p.amount = 24
+	p.lifetime = 0.35
+	p.local_coords = false
+	var q := QuadMesh.new()
+	q.size = Vector2.ONE * size
+	p.mesh = q
+	p.material_override = _particle_mat(true)
+	p.gravity = Vector3.ZERO
+	p.spread = 15.0
+	p.initial_velocity_min = 0.0
+	p.initial_velocity_max = 0.3
+	p.color = color
+	p.color_ramp = _fade_ramp()
+	p.scale_amount_curve = _shrink_curve()
+	parent.add_child(p)
+	p.emitting = true
+	return p
+
+var _ramp: Gradient
+var _shrink: Curve
+func _fade_ramp() -> Gradient:
+	if _ramp == null:
+		_ramp = Gradient.new()
+		_ramp.set_color(0, Color(1, 1, 1, 1))
+		_ramp.set_color(1, Color(1, 1, 1, 0))
+	return _ramp
+
+func _shrink_curve() -> Curve:
+	if _shrink == null:
+		_shrink = Curve.new()
+		_shrink.add_point(Vector2(0, 1))
+		_shrink.add_point(Vector2(1, 0.2))
+	return _shrink
+
+## Weicher Funkenregen (Treffer, Explosionen). speed < 0 = nach innen/oben schwebend.
+func _burst(pos: Vector3, color: Color, amount: int, speed: float, size: float) -> void:
+	var p := CPUParticles3D.new()
+	p.one_shot = true
+	p.explosiveness = 0.95
+	p.amount = max(1, amount)
+	p.lifetime = 0.55
+	var q := QuadMesh.new()
+	q.size = Vector2.ONE * size * 4.0
+	p.mesh = q
+	p.material_override = _particle_mat(true)
+	p.direction = Vector3.UP
+	p.spread = 180.0
+	p.initial_velocity_min = abs(speed) * 0.4
+	p.initial_velocity_max = abs(speed)
+	p.damping_min = 4.0
+	p.damping_max = 8.0
+	p.gravity = Vector3(0, -3.0 if speed > 0 else 2.5, 0)
+	p.color = Color(color.r, color.g, color.b, 1.0)
+	p.color_ramp = _fade_ramp()
+	p.scale_amount_min = 0.5
+	p.scale_amount_max = 1.2
+	p.scale_amount_curve = _shrink_curve()
+	p.position = pos
+	add_child(p)
+	p.emitting = true
+	fx.append({"node": p, "t": 0.0, "dur": 0.8, "kind": "particles"})
+
+## Saubere Schwerthieb-Spur: leuchtendes Band, das in Schlagrichtung über den Bogen läuft.
+func _slash_fx(origin: Vector3, dir: Vector3, radius: float, arc: float, color: Color, swing: String) -> void:
+	if _slash_shader == null:
+		_slash_shader = Shader.new()
+		_slash_shader.code = """
+shader_type spatial;
+render_mode unshaded, blend_mix, cull_disabled, depth_draw_never, shadows_disabled;
+uniform vec4 color : source_color = vec4(1.0);
+uniform float progress = 0.0;
+uniform float reverse = 0.0;
+uniform float fade = 1.0;
+void fragment() {
+	float x = mix(UV.x, 1.0 - UV.x, reverse);
+	float r = UV.y;
+	float band = smoothstep(0.0, 0.55, r) * (1.0 - smoothstep(0.92, 1.0, r));
+	float tail = smoothstep(progress - 0.8, progress, x) * (1.0 - smoothstep(progress, progress + 0.04, x));
+	float core = smoothstep(0.7, 0.92, r) * (1.0 - smoothstep(0.92, 1.0, r));
+	ALBEDO = mix(color.rgb * 1.15, vec3(1.0), core * 0.8);
+	ALPHA = clamp(band * tail * fade * color.a * 1.2, 0.0, 0.95);
+}
+"""
+	var mi := MeshInstance3D.new()
+	mi.mesh = _sector_mesh(radius, min(arc, 359.0), radius * 0.35)
+	var m := ShaderMaterial.new()
+	m.shader = _slash_shader
+	m.set_shader_parameter("color", color)
+	m.set_shader_parameter("reverse", 1.0 if swing == "rtl" else 0.0)
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.position = origin + Vector3(0, 0.75, 0)
+	mi.rotation.y = atan2(-dir.x, -dir.z)
+	if swing == "over":
+		mi.rotation.x = deg_to_rad(-25)
+	add_child(mi)
+	fx.append({"node": mi, "t": 0.0, "dur": 0.26, "kind": "slash"})
+
+## Weicher, sich ausdehnender Ring am Boden.
+func _ring_fx(pos: Vector3, radius: float, color: Color, dur: float) -> void:
+	if _ring_shader == null:
+		_ring_shader = Shader.new()
+		_ring_shader.code = """
+shader_type spatial;
+render_mode unshaded, blend_mix, cull_disabled, depth_draw_never, shadows_disabled;
+uniform vec4 color : source_color = vec4(1.0);
+uniform float fade = 1.0;
+void fragment() {
+	float r = UV.y;
+	ALBEDO = mix(color.rgb, vec3(1.0), smoothstep(0.6, 0.85, r) * 0.5);
+	ALPHA = sin(r * 3.14159) * fade * color.a;
+}
+"""
+	var mi := MeshInstance3D.new()
+	mi.mesh = _sector_mesh(1.0, 359.9, 0.7)
+	var m := ShaderMaterial.new()
+	m.shader = _ring_shader
+	m.set_shader_parameter("color", color)
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mi.position = pos + Vector3(0, 0.08, 0)
 	add_child(mi)
 	fx.append({"node": mi, "t": 0.0, "dur": dur, "kind": "ring", "radius": radius})
 
 func aura_particle(pos: Vector3, color: Color) -> void:
-	var mi := MeshInstance3D.new()
-	mi.mesh = ModelBuilder.mesh("sphere")
-	mi.material_override = _fx_mat(Color(color.r, color.g, color.b, color.a))
-	mi.scale = Vector3.ONE * 0.14
-	mi.position = pos
-	add_child(mi)
-	fx.append({"node": mi, "t": 0.0, "dur": 0.5, "kind": "rise"})
-
-func _burst(pos: Vector3, color: Color, amount: int, speed: float, size: float) -> void:
 	var p := CPUParticles3D.new()
 	p.one_shot = true
-	p.explosiveness = 1.0
-	p.amount = max(1, amount)
-	p.lifetime = 0.5
-	var sm := SphereMesh.new()
-	sm.radius = size
-	sm.height = size * 2.0
-	sm.radial_segments = 6
-	sm.rings = 3
-	p.mesh = sm
-	p.material_override = _fx_mat(Color(color.r, color.g, color.b, 0.9))
+	p.amount = 2
+	p.lifetime = 0.7
+	var q := QuadMesh.new()
+	q.size = Vector2.ONE * 0.35
+	p.mesh = q
+	p.material_override = _particle_mat(true)
 	p.direction = Vector3.UP
-	p.spread = 180.0
-	p.initial_velocity_min = abs(speed) * 0.5
-	p.initial_velocity_max = abs(speed)
-	p.gravity = Vector3(0, -6.0 if speed > 0 else 2.0, 0)
-	p.scale_amount_min = 0.6
-	p.scale_amount_max = 1.2
-	var curve := Curve.new()
-	curve.add_point(Vector2(0, 1))
-	curve.add_point(Vector2(1, 0))
-	p.scale_amount_curve = curve
+	p.spread = 25.0
+	p.initial_velocity_min = 0.6
+	p.initial_velocity_max = 1.3
+	p.gravity = Vector3.ZERO
+	p.color = Color(color.r, color.g, color.b, 1.0)
+	p.color_ramp = _fade_ramp()
+	p.scale_amount_curve = _shrink_curve()
 	p.position = pos
 	add_child(p)
 	p.emitting = true
-	fx.append({"node": p, "t": 0.0, "dur": 0.8, "kind": "particles"})
+	fx.append({"node": p, "t": 0.0, "dur": 0.9, "kind": "particles"})
 
 func _update_fx(delta: float) -> void:
 	for i in range(fx.size() - 1, -1, -1):
@@ -719,16 +1067,17 @@ func _update_fx(delta: float) -> void:
 		f.t += delta
 		var k: float = clamp(f.t / f.dur, 0.0, 1.0)
 		var node: Node3D = f.node
+		if not is_instance_valid(node):
+			fx.remove_at(i)
+			continue
 		match f.kind:
 			"slash":
-				node.rotation.y = f.base_yaw + f.spin * (k - 0.5) * 2.0
-				(node.material_override as StandardMaterial3D).albedo_color.a = 0.7 * (1.0 - k)
+				var sm := node.material_override as ShaderMaterial
+				sm.set_shader_parameter("progress", k * 1.5)
+				sm.set_shader_parameter("fade", 1.0 - smoothstep(0.6, 1.0, k))
 			"ring":
 				node.scale = Vector3.ONE * lerp(0.2, f.radius, 1.0 - (1.0 - k) * (1.0 - k))
-				(node.material_override as StandardMaterial3D).albedo_color.a = 0.8 * (1.0 - k)
-			"rise":
-				node.position.y += delta * 1.2
-				(node.material_override as StandardMaterial3D).albedo_color.a *= 0.93
+				(node.material_override as ShaderMaterial).set_shader_parameter("fade", 1.0 - k)
 		if k >= 1.0:
 			node.queue_free()
 			fx.remove_at(i)
@@ -815,6 +1164,19 @@ func _build_hud() -> void:
 	sup_joy.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud_root.add_child(sup_joy)
 
+	gad_btn = JoyDraw.new()
+	gad_btn.radius = 46
+	gad_btn.color = Color(0.2, 0.6, 0.3, 0.6)
+	gad_btn.knob_color = Color(0.4, 1.0, 0.5)
+	gad_btn.size = Vector2(130, 130)
+	gad_btn.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud_root.add_child(gad_btn)
+	gad_label = Game.make_label("", 22, Color.WHITE, 6)
+	gad_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	gad_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	gad_label.size = Vector2(160, 30)
+	hud_root.add_child(gad_label)
+
 	var top := Game.make_panel(Color(0.12, 0.1, 0.25, 0.85))
 	top.position = Vector2(0, 0)
 	top.set_anchors_preset(Control.PRESET_CENTER_TOP)
@@ -859,6 +1221,8 @@ func _layout_hud() -> void:
 	move_joy.position = Vector2(170, s.y - 170) - move_joy.size / 2.0
 	atk_joy.position = Vector2(s.x - 170, s.y - 170) - atk_joy.size / 2.0
 	sup_joy.position = Vector2(s.x - 400, s.y - 110) - sup_joy.size / 2.0
+	gad_btn.position = Vector2(s.x - 330, s.y - 270) - gad_btn.size / 2.0
+	gad_label.position = Vector2(s.x - 330, s.y - 270) + Vector2(-80, 50)
 
 func _zone_at(p: Vector2) -> String:
 	var s := get_viewport().get_visible_rect().size
@@ -866,6 +1230,8 @@ func _zone_at(p: Vector2) -> String:
 		return "attack"
 	if p.distance_to(sup_joy.position + sup_joy.size / 2.0) < sup_joy.radius * 1.5:
 		return "super"
+	if p.distance_to(gad_btn.position + gad_btn.size / 2.0) < gad_btn.radius * 1.5:
+		return "gadget"
 	if p.x < s.x * 0.45 and p.y > s.y * 0.2:
 		return "move"
 	return ""
@@ -901,6 +1267,8 @@ func _release(t: Dictionary) -> void:
 			var r: float = attack_range(player.form())
 			_aim_frac = _auto_frac(r) if tap else clamp(v.length() / (atk_joy.radius * 0.8), 0.25, 1.0)
 			player.try_attack(auto_aim(r + 3.0) if tap else Vector3(v.x, 0, v.y).normalized())
+		"gadget":
+			player.try_gadget()
 		"super":
 			var sr: float = player.form().super.range
 			_aim_frac = _auto_frac(sr) if tap else clamp(v.length() / (sup_joy.radius * 0.8), 0.25, 1.0)
@@ -933,6 +1301,14 @@ func _update_hud(delta: float) -> void:
 	sup_joy.charge = player.super_charge
 	sup_joy.is_ready = player.super_charge >= 1.0
 	sup_joy.dim = player.super_charge < 1.0
+	var g := player.gadget()
+	gad_btn.visible = not g.is_empty()
+	gad_label.visible = gad_btn.visible
+	if gad_btn.visible:
+		gad_btn.dim = player.gadget_uses <= 0 or player.gadget_cd > 0.0
+		gad_btn.charge = 1.0 - player.gadget_cd / g.get("cooldown", 5.0) if player.gadget_uses > 0 else 0.0
+		gad_label.text = "%s (%d)" % [g.name, player.gadget_uses]
+		gad_btn.queue_redraw()
 	for j in [move_joy, atk_joy, sup_joy]:
 		j.queue_redraw()
 	var f: Dictionary = player.form()
@@ -1026,7 +1402,7 @@ func _make_bar(is_player: bool, title: String) -> Control:
 	return c
 
 func _damage_number(wpos: Vector3, amount: float, color: Color) -> void:
-	var l := Game.make_label(str(int(amount)), 30, color, 8)
+	var l := Game.make_label("BETÄUBT!" if amount < 0 else str(int(amount)), 30, color, 8)
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud_root.add_child(l)
 	l.position = cam.unproject_position(wpos) - Vector2(30, 20) + Vector2(randf_range(-20, 20), 0)

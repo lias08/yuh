@@ -31,20 +31,42 @@ func _ready() -> void:
 
 # ------------------------------------------------------------------ Speicherstand
 func load_game() -> void:
-	if not FileAccess.file_exists(SAVE_PATH):
-		return
-	var f := FileAccess.open(SAVE_PATH, FileAccess.READ)
-	if f == null:
-		return
-	var parsed = JSON.parse_string(f.get_as_text())
+	var parsed = _read_json(SAVE_PATH)
+	if not (parsed is Dictionary):
+		parsed = _read_json(SAVE_PATH + ".bak")  # Fallback auf Sicherungskopie
 	if parsed is Dictionary:
 		for k in (parsed as Dictionary).keys():
 			data[k] = parsed[k]
 
+## Speichert sicher: erst in eine temporäre Datei, dann ersetzen; die vorige Version bleibt als Backup.
 func save_game() -> void:
-	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
-	if f:
-		f.store_string(JSON.stringify(data))
+	data.save_version = 2
+	var tmp := SAVE_PATH + ".tmp"
+	var f := FileAccess.open(tmp, FileAccess.WRITE)
+	if f == null:
+		return
+	f.store_string(JSON.stringify(data))
+	f.close()
+	var dir := DirAccess.open("user://")
+	if dir == null:
+		return
+	if FileAccess.file_exists(SAVE_PATH):
+		dir.copy(SAVE_PATH, SAVE_PATH + ".bak")
+		dir.remove(SAVE_PATH)
+	dir.rename(tmp, SAVE_PATH)
+
+## Beim Schließen / In-den-Hintergrund-Wechseln der App immer speichern.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		save_game()
+
+func _read_json(path: String):
+	if not FileAccess.file_exists(path):
+		return null
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return null
+	return JSON.parse_string(f.get_as_text())
 
 # ------------------------------------------------------------------ Brawler
 func get_brawler(id: String) -> Dictionary:

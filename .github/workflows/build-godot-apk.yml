@@ -27,9 +27,12 @@ jobs:
           mkdir -p ~/.local/share/godot/export_templates ~/.config/godot
           cp -r /root/.local/share/godot/export_templates/* ~/.local/share/godot/export_templates/ || true
           ls ~/.local/share/godot/export_templates
-          # Debug-Signaturschlüssel erzeugen (für installierbare Test-APKs)
-          keytool -genkeypair -v -keystore /tmp/debug.keystore -storepass android -alias androiddebugkey \
-            -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          # Fester Test-Signaturschlüssel aus dem Repo: jede neue Test-APK lässt sich über die alte
+          # installieren (Spielstand bleibt erhalten). Nur für Test-Builds, nicht für den Play Store.
+          cp godot/android_signing/brawlarena-test.keystore /tmp/debug.keystore
+          # Versionsnummer = Build-Nummer (Update statt Neuinstallation)
+          sed -i "s/^version\/code=.*/version\/code=${{ github.run_number }}/" godot/export_presets.cfg
+          grep "version/code" godot/export_presets.cfg
           SDK=$(ls -d /usr/lib/android-sdk 2>/dev/null || echo "$ANDROID_HOME")
           JDK=$(dirname "$(dirname "$(readlink -f "$(which java)")")")
           echo "Java: $JDK"

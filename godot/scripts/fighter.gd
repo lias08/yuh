@@ -18,6 +18,10 @@ var alive := true
 var aim_dir := Vector3(0, 0, -1)
 var rig: Dictionary
 var damage_dealt := 0.0
+var gadget_uses := 3
+var gadget_cd := 0.0
+var shield_until := 0.0
+var speed_until := 0.0
 
 var _cooldown := 0.0
 var _last_damaged := -99.0
@@ -48,7 +52,27 @@ func form() -> Dictionary:
 	return def.forms[form_index]
 
 func move_speed() -> float:
-	return def.speed * form().speed_mul
+	return def.speed * form().speed_mul * (1.4 if _time < speed_until else 1.0)
+
+func gadget() -> Dictionary:
+	return def.get("gadget", {})
+
+## Gadget: begrenzte Einsätze pro Match, kurze Abklingzeit.
+func try_gadget() -> bool:
+	var g := gadget()
+	if g.is_empty() or not alive or gadget_uses <= 0 or gadget_cd > 0.0:
+		return false
+	gadget_uses -= 1
+	gadget_cd = g.get("cooldown", 5.0)
+	_super_t = 0.0
+	arena.use_gadget(self, g)
+	return true
+
+func has_shield() -> bool:
+	return _time < shield_until
+
+func now() -> float:
+	return _time
 
 func reload_time() -> float:
 	return def.reload * form().reload_mul
@@ -103,6 +127,7 @@ func update_movement(input: Vector2, delta: float) -> void:
 	if ammo < def.ammo:
 		ammo = min(float(def.ammo), ammo + delta / reload_time())
 	_cooldown -= delta
+	gadget_cd = max(0.0, gadget_cd - delta)
 	if hp < max_hp and _time - _last_damaged > 3.0 and _time - _last_action > 3.0:
 		_regen_t += delta
 		if _regen_t >= 1.0:
@@ -216,6 +241,8 @@ func dash_move(delta_pos: Vector3) -> void:
 func take_damage(amount: float) -> void:
 	if not alive:
 		return
+	if has_shield():
+		amount *= 0.35
 	hp -= amount
 	_last_damaged = _time
 	_hit_t = 0.0

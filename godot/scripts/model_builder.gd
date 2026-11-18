@@ -245,6 +245,14 @@ static func _face(head: Node3D, look: Dictionary, dark: Color, white: Color) -> 
 			part(head, "cyl", Vector3(0.16 * side, 0.06, -0.445), Vector3(0.18, 0.02, 0.18), Color(0.55, 0.85, 1.0), Vector3(90, 0, 0), false)
 		part(head, "sphere", Vector3(0, -0.2, -0.39), Vector3(0.18, 0.08, 0.05), Color(0.45, 0.12, 0.15), Vector3.ZERO, false)
 		return
+	if look.face == "ninja":
+		for side in [-1, 1]:
+			var e := Vector3(0.15 * side, 0.06, -0.39)
+			part(head, "sphere", e, Vector3(0.16, 0.13, 0.06), white, Vector3(0, 0, -10 * side), false)
+			part(head, "sphere", e + Vector3(0, 0, -0.03), Vector3(0.08, 0.09, 0.03), look.eye, Vector3.ZERO, false)
+			part(head, "box", e + Vector3(0, 0.12, -0.01), Vector3(0.17, 0.035, 0.03), dark, Vector3(0, 0, -18 * side), false)
+		part(head, "sphere", Vector3(0, -0.2, -0.2), Vector3(0.84, 0.42, 0.56), look.trim.darkened(0.45))
+		return
 	if look.face == "visor":
 		part(head, "box", Vector3(0, 0.05, -0.4), Vector3(0.62, 0.16, 0.1), Color(0.15, 0.2, 0.3))
 		part(head, "box", Vector3(0, 0.06, -0.455), Vector3(0.52, 0.06, 0.02), look.eye, Vector3.ZERO, false)
@@ -275,6 +283,17 @@ static func _hair(head: Node3D, look: Dictionary) -> void:
 	match look.hair_style:
 		"bald":
 			part(head, "sphere", Vector3(0, 0.3, 0.12), Vector3(0.5, 0.2, 0.4), hc)
+			return
+		"ponytail":
+			part(head, "sphere", Vector3(0, 0.12, 0.06), Vector3(0.94, 0.76, 0.9), hc)
+			part(head, "sphere", Vector3(0, 0.22, -0.3), Vector3(0.7, 0.26, 0.3), hc, Vector3(-15, 0, 0))
+			part(head, "sphere", Vector3(0, 0.34, 0.44), Vector3(0.18, 0.18, 0.18), look.trim, Vector3.ZERO, false)
+			part(head, "capsule", Vector3(0, 0.05, 0.62), Vector3(0.24, 0.32, 0.24), hc, Vector3(35, 0, 0))
+			return
+		"hood":
+			part(head, "sphere", Vector3(0, 0.06, 0.06), Vector3(1.02, 0.98, 0.98), look.robe)
+			part(head, "cone", Vector3(0, 0.3, 0.5), Vector3(0.4, 0.5, 0.4), look.robe, Vector3(-60, 0, 0))
+			part(head, "torus", Vector3(0, 0.02, -0.26), Vector3(0.82, 0.75, 0.55), look.trim, Vector3(90, 0, 0), false)
 			return
 		"cap":
 			part(head, "sphere", Vector3(0, 0.0, 0.08), Vector3(0.9, 0.6, 0.85), hc)
@@ -337,6 +356,21 @@ static func _weapon(w: Node3D, look: Dictionary, dark: Color) -> Node3D:
 			part(w, "cone", Vector3(0, 0.03, -1.31), Vector3(0.07, 0.18, 0.22), blade, Vector3(-90, 0, 0))
 			for i in 4:
 				part(w, "torus", Vector3(0, -0.05 - i * 0.07, 0.2 + i * 0.03), Vector3.ONE * 0.15, Color(0.65, 0.65, 0.7), Vector3(0, 90 * (i % 2), 90), false)
+		"blaster":
+			part(w, "rbox", Vector3(0, 0.08, -0.2), Vector3(0.18, 0.18, 0.46), Color(0.3, 0.32, 0.4))
+			part(w, "cyl", Vector3(0, 0.08, -0.46), Vector3(0.15, 0.1, 0.15), Color(0.2, 0.22, 0.28), Vector3(90, 0, 0))
+			part(w, "torus", Vector3(0, 0.08, -0.3), Vector3.ONE * 0.32, blade, Vector3(90, 0, 0), false)
+			part(w, "sphere", Vector3(0, 0.2, -0.12), Vector3(0.12, 0.08, 0.2), blade, Vector3.ZERO, false)
+		"daggers":
+			part(w, "cyl", Vector3(0, 0, 0.04), Vector3(0.05, 0.16, 0.05), dark, Vector3(90, 0, 0))
+			part(w, "box", Vector3(0, 0, -0.04), Vector3(0.16, 0.04, 0.04), trim)
+			part(w, "box", Vector3(0, 0.02, -0.3), Vector3(0.035, 0.09, 0.46), blade)
+			part(w, "cone", Vector3(0, 0.02, -0.57), Vector3(0.04, 0.12, 0.08), blade, Vector3(-90, 0, 0))
+		"fists":
+			part(w, "rbox", Vector3(0, 0, -0.05), Vector3(0.42, 0.38, 0.42), blade)
+			for i in 3:
+				part(w, "sphere", Vector3((i - 1) * 0.12, 0.1, -0.24), Vector3.ONE * 0.13, blade.lightened(0.1))
+			part(w, "torus", Vector3(0, 0, 0.12), Vector3(0.5, 0.5, 0.5), trim, Vector3(90, 0, 0), false)
 		"pistol":
 			part(w, "box", Vector3(0, 0.07, -0.2), Vector3(0.1, 0.12, 0.38), Color(0.35, 0.35, 0.42))
 			part(w, "box", Vector3(0, -0.04, -0.06), Vector3(0.09, 0.18, 0.1), trim, Vector3(15, 0, 0))

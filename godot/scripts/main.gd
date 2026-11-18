@@ -753,14 +753,14 @@ func _run_tests() -> void:
 		add_child(mm)
 		await get_tree().process_frame
 		var pl: Fighter = mm.player
-		pl.position = Vector3(0, 0, 2.2)
+		pl.position = Vector3(0, 0, 0.9)
 		var before: float = pl.ammo
 		var atk_ok := pl.try_attack(mm.auto_aim(20.0))
 		var used := before - pl.ammo
 		await get_tree().create_timer(1.3).timeout
 		var d1: float = mm.total_damage
 		pl.super_charge = 1.0
-		pl.position = Vector3(0, 0, 2.2)
+		pl.position = Vector3(0, 0, 1.5)
 		var sup_ok := pl.try_super(mm.auto_aim(20.0))
 		await get_tree().create_timer(1.6).timeout
 		var d2: float = mm.total_damage - d1
@@ -768,6 +768,21 @@ func _run_tests() -> void:
 		log.append("%s: Angriff=%s Munition=%.2f Schaden=%d | Super=%s Schaden=%d -> %s" % [b.name, atk_ok, used, int(d1), sup_ok, int(d2), "OK" if good else "FEHLER"])
 		ok = ok and good
 		mm.queue_free()
+	# Mechaniken: Betäubung, zerstörbare Kisten, Gadget
+	Game.data.selected = "bumm"
+	var mx = preload("res://scripts/match.gd").new()
+	add_child(mx)
+	await get_tree().process_frame
+	var dmy: Dictionary = mx.dummies[0]
+	mx._damage_dummy(dmy, 100.0, mx.player, {"stun": 1.0})
+	var stunned: bool = dmy.stun_until > Time.get_ticks_msec() / 1000.0
+	var crates_before: int = mx.wall_blocks.size()
+	var broken: int = mx.break_walls(Vector3(-2, 0, -3), 1.5)
+	var walls_after: int = mx.walls.size()
+	var gadget_ok: bool = mx.player.try_gadget() and mx.player.gadget_uses == 2
+	log.append("Betäubung=%s, Kisten zerstört=%d (Kollision aktualisiert=%s), Gadget=%s" % [stunned, broken, walls_after == crates_before - broken, gadget_ok])
+	ok = ok and stunned and broken > 0 and walls_after == crates_before - broken and gadget_ok
+	mx.queue_free()
 	# Box & Skin
 	Game.data.coins = 1000
 	Game.data.gems = 500
