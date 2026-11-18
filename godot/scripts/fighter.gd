@@ -86,7 +86,8 @@ func try_gadget() -> bool:
 	var g := gadget()
 	if g.is_empty() or not alive or gadget_uses <= 0 or gadget_cd > 0.0:
 		return false
-	gadget_uses -= 1
+	if not g.get("unlimited", false):
+		gadget_uses -= 1
 	gadget_cd = g.get("cooldown", 5.0)
 	_super_t = 0.0
 	arena.use_gadget(self, g)
@@ -237,7 +238,7 @@ func try_super(dir: Vector3) -> bool:
 	else:
 		_super_t = 0.0
 		arena.spawn_wave(self, sup, true)
-		if form_index < def.forms.size() - 1:
+		if form_index < def.forms.size() - 1 and not def.get("no_evolve", false):
 			apply_form(form_index + 1, true)
 	return true
 

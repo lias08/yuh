@@ -255,12 +255,25 @@ func look_for(b: Dictionary, form_i: int, skin_override := "-") -> Dictionary:
 	var look: Dictionary = b.forms[form_i].look.duplicate()
 	var sk: Dictionary = equipped_skin(b) if skin_override == "-" else get_skin(b, skin_override)
 	if not sk.is_empty():
-		for key in ["robe", "trim", "hat", "blade"]:
+		for key in (["robe", "trim", "hat", "blade"] if sk.get("hue", 0.0) != 0.0 else []):
 			if look.has(key):
 				var c: Color = look[key]
-				look[key] = Color.from_hsv(fposmod(c.h + sk.hue, 1.0), max(c.s, 0.35) if c.s > 0.05 else c.s, c.v)
+				look[key] = Color.from_hsv(fposmod(c.h + sk.get("hue", 0.0), 1.0), max(c.s, 0.35) if c.s > 0.05 else c.s, c.v)
 		if sk.has("hair"):
 			look.hair = sk.hair
+		# Echte Formänderungen: Frisur/Helm, Gesicht, Waffe, Accessoires, Farben
+		var over: Dictionary = sk.get("look", {})
+		for key in over:
+			if key == "acc":
+				var merged: Array = look.get("acc", []).duplicate()
+				for a in over.acc:
+					if not a in merged:
+						merged.append(a)
+				look["acc"] = merged
+			elif key == "weapon" and b.forms.size() > 1:
+				continue  # mehrformige Brawler behalten ihre Formwaffe
+			else:
+				look[key] = over[key]
 	return look
 
 func buy_skin(b: Dictionary, skin_id: String) -> String:
@@ -316,6 +329,14 @@ func open_box(type: String, free := false, gift := false) -> Array:
 	var coins := 0
 	var gems := 0
 	for i in bx.rolls:
+		# Hyperlegendär: 0,00000001 % = 1e-10 pro Belohnung (zwei Würfe à 1e-5, da randf zu grob ist)
+		if randf() < 0.00001 and randf() < 0.00001:
+			var hyper: Array = brawlers.filter(func(hb): return hb.rarity == "Hyperlegendär" and not is_unlocked(hb.id))
+			if not hyper.is_empty():
+				var hb: Dictionary = hyper.pick_random()
+				data.unlocked.append(hb.id)
+				rewards.append({"kind": "brawler", "id": hb.id, "text": hb.name, "sub": "HYPERLEGENDÄR!!! (" + hb.rarity + ")", "color": hb.rarity_color})
+				continue
 		var r := randf()
 		if r < bx.brawler:
 			var b := _roll_locked_brawler()
@@ -343,7 +364,7 @@ func open_box(type: String, free := false, gift := false) -> Array:
 	return rewards
 
 func _roll_locked_brawler() -> Dictionary:
-	var locked: Array = brawlers.filter(func(b): return not is_unlocked(b.id))
+	var locked: Array = brawlers.filter(func(b): return not is_unlocked(b.id) and BrawlersData.rarity_weight(b.rarity) > 0.0)
 	if locked.is_empty():
 		return {}
 	var total := 0.0

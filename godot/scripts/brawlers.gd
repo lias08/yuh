@@ -2,8 +2,10 @@
 # Neue Brawler sind gesperrt und nur über Boxen (oder Code 67) freischaltbar – außer "default_unlocked".
 class_name Brawlers
 
+const RosterData = preload("res://scripts/roster.gd")
+
 static func all() -> Array:
-	var list := [klingengeist(), funke(), brocken(), bumm(), lumi(), frosti(), volta(), nebel(), granit()]
+	var list := [klingengeist(), varg(), funke(), brocken(), bumm(), lumi(), frosti(), volta(), nebel(), granit()]
 	# Gadgets (3 Einsätze pro Match)
 	var gadgets := {
 		"klingengeist": {"name": "Schattenschritt", "desc": "Teleportiert dich ein Stück nach vorne.", "type": "blink", "range": 4.0, "cooldown": 5.0, "color": Color(0.5, 0.85, 1.0)},
@@ -13,10 +15,41 @@ static func all() -> Array:
 		"lumi": {"name": "Sternenlicht", "desc": "Heilt dich um 35 %.", "type": "heal", "amount": 0.35, "cooldown": 7.0, "color": Color(0.4, 1.0, 0.5)},
 		"frosti": {"name": "Eispanzer", "desc": "3 Sekunden 65 % weniger Schaden.", "type": "shield", "duration": 3.0, "cooldown": 8.0, "color": Color(0.6, 0.9, 1.0)},
 	}
+	var wclass := {"funke": "gun", "brocken": "gun", "bumm": "throw", "lumi": "magic", "frosti": "melee", "volta": "gun", "nebel": "melee", "granit": "melee"}
 	for b in list:
 		if gadgets.has(b.id):
 			b["gadget"] = gadgets[b.id]
+		if wclass.has(b.id):
+			b["wclass"] = wclass[b.id]
+	_upgrade_skins(list)
+	list.append_array(RosterData.all())
 	return list
+
+## Bestehende Skins bekommen echte Formänderungen (Kopfbedeckung, Gesicht, Waffe, Accessoires)
+## + je ein zusätzlicher Themen-Skin. IDs bleiben gleich, damit gekaufte Skins erhalten bleiben.
+static func _upgrade_skins(list: Array) -> void:
+	var extra := {
+		"funke_ranger": {"hair_style": "cowboy", "hat": Color(0.55, 0.38, 0.22), "acc": ["scarf", "medal"], "scarf_color": Color(0.85, 0.2, 0.2)},
+		"funke_neon": {"hair_style": "mohawk", "face": "shades", "weapon": "blaster", "acc": ["spikes"]},
+		"brocken_eis": {"hair_style": "viking", "acc": ["beard", "pauldrons"], "armor_color": Color(0.8, 0.92, 1.0)},
+		"brocken_lava": {"face": "fangs", "acc": ["beard", "horns", "spikes"], "horn_color": Color(0.25, 0.1, 0.1)},
+		"bumm_kuerbis": {"hair_style": "pumpkin", "acc": ["scarf"], "scarf_color": Color(0.3, 0.6, 0.2)},
+		"bumm_weltraum": {"hair_style": "astro", "weapon": "cannon", "acc": ["jetpack"]},
+		"lumi_nacht": {"hair_style": "hood", "face": "sleepy", "weapon": "book", "acc": ["halo"]},
+		"frosti_lava": {"face": "fangs", "hair_style": "flame", "acc": ["horns", "spikes"]},
+		"volta_neon": {"hair_style": "robot", "face": "robot", "acc": ["antenna", "jetpack"]},
+		"nebel_sakura": {"hair_style": "long", "face": "happy", "weapon": "fan", "acc": ["flower"]},
+		"granit_kristall": {"face": "cyclops", "acc": ["spikes", "crown"], "acc_color": Color(0.75, 0.45, 1.0)},
+		"klinge_schatten": {"acc": ["scarf"], "scarf_color": Color(0.2, 0.15, 0.3)},
+		"klinge_feuer": {"acc": ["horns"], "horn_color": Color(1.0, 0.45, 0.15)},
+	}
+	for b in list:
+		for sk in b.skins:
+			if extra.has(sk.id):
+				sk["look"] = extra[sk.id]
+		var themes := ["ritter", "vampir", "samurai", "engel", "wikinger", "zirkus", "pirat", "robo", "gold", "rocker"]
+		var key: String = themes[abs(hash(b.id)) % themes.size()]
+		b.skins.append(RosterData.theme_skin(b, key))
 
 ## Seltenheitsfarben (Kartenfarbe, Box-Drops).
 static func rarity_color(r: String) -> Color:
@@ -26,6 +59,7 @@ static func rarity_color(r: String) -> Color:
 		"Episch": return Color(0.75, 0.35, 1.0)
 		"Mythisch": return Color(1.0, 0.3, 0.4)
 		"Legendär": return Color(1.0, 0.85, 0.15)
+		"Hyperlegendär": return Color(1.0, 0.25, 0.75)
 	return Color(0.6, 0.8, 1.0)
 
 ## Box-Wahrscheinlichkeitsgewicht je Seltenheit (höher = häufiger).
@@ -36,6 +70,7 @@ static func rarity_weight(r: String) -> float:
 		"Episch": return 10.0
 		"Mythisch": return 4.0
 		"Legendär": return 1.5
+		"Hyperlegendär": return 0.0  # eigener Wurf: 0,00000001 % pro Box-Belohnung
 	return 10.0
 
 ## Brawler mit nur einer Form (Super entwickelt nicht weiter).
@@ -51,6 +86,60 @@ static func _single(id: String, name: String, title: String, rarity: String, rol
 	return {"id": id, "name": name, "title": title, "rarity": rarity, "rarity_color": rarity_color(rarity), "role": role,
 		"desc": desc, "default_unlocked": false, "hp": hp, "speed": speed, "ammo": ammo, "reload": reload,
 		"cooldown": 0.38, "charge_hits": 4.0, "forms": [form], "skins": skins}
+
+
+# ------------------------------------------------------------------------------------------
+# Varg – Hyperlegendär. Söldner mit einem Arsenal auf dem Rücken. Gadget "Arsenalwechsel":
+# unbegrenzt, 3 s Abklingzeit – wechselt die Waffe. Jede Waffe hat eigenen Angriff UND eigene Super.
+# Chance aus Boxen: 0,00000001 % pro Belohnung (oder Code 67).
+# ------------------------------------------------------------------------------------------
+static func varg() -> Dictionary:
+	var base := {"robe": Color(0.22, 0.24, 0.28), "trim": Color(0.2, 0.85, 0.75), "skin": Color(0.86, 0.66, 0.5), "hair": Color(0.92, 0.92, 0.96),
+		"hair_style": "spiky", "face": "angry", "cape": false, "eye": Color(0.15, 0.75, 0.7), "acc": ["scarf", "backpack"],
+		"scarf_color": Color(0.2, 0.85, 0.75), "pack_color": Color(0.3, 0.3, 0.34), "size": 1.05, "mark": Color(0.2, 0.85, 0.75)}
+	var teal := Color(0.3, 1.0, 0.85)
+	var forms := []
+	var specs := [
+		["Katana", "katana", Color(0.85, 0.95, 1.0), "Klingenwirbel", "1 Munition = 3 blitzschnelle Schnitte.",
+			[{"t": 0.0, "dir": "ltr", "dmg": 520.0, "range": 2.8, "arc": 140.0, "color": teal},
+			 {"t": 0.09, "dir": "rtl", "dmg": 520.0, "range": 2.8, "arc": 140.0, "color": teal},
+			 {"t": 0.2, "dir": "thrust", "dmg": 700.0, "range": 3.0, "arc": 70.0, "color": teal}],
+			{"type": "dash", "name": "Phantomschnitt", "desc": "Unsichtbar schneller Sprint, der alle Getroffenen betäubt.", "dmg": 1900.0, "range": 8.0, "speed": 28.0, "color": teal, "stun": 1.2}],
+		["Speer", "spear", Color(0.9, 0.3, 0.3), "Speerstoß", "1 Munition = 2 weitreichende Stöße.",
+			[{"t": 0.0, "dir": "thrust", "dmg": 780.0, "range": 3.8, "arc": 45.0, "color": Color(1, 0.4, 0.4)},
+			 {"t": 0.16, "dir": "thrust", "dmg": 780.0, "range": 3.8, "arc": 45.0, "color": Color(1, 0.4, 0.4), "knock": 0.8}],
+			{"type": "wave", "name": "Speerwurf", "desc": "Schleudert den Speer – durchbohrt alles und zerstört Kisten.", "dmg": 2200.0, "range": 12.0, "width": 0.5, "speed": 24.0, "color": Color(1, 0.35, 0.35), "pierce": true, "charge": 0.0, "explode": 0.0, "break": true}],
+		["Kettenklinge", "chain", Color(0.75, 0.75, 0.82), "Kettenkreisel", "1 Munition = ein weiter Rundumschlag, dann ein Hieb von oben.",
+			[{"t": 0.0, "dir": "ltr", "dmg": 650.0, "range": 3.6, "arc": 300.0, "color": Color(0.8, 0.8, 0.9), "knock": 0.6},
+			 {"t": 0.22, "dir": "over", "dmg": 750.0, "range": 3.4, "arc": 100.0, "color": Color(0.8, 0.8, 0.9), "slow": 1.0}],
+			{"type": "nova", "name": "Kettensturm", "desc": "Die Kette wirbelt um ihn herum: Klingen in alle Richtungen, verlangsamt.", "dmg": 600.0, "range": 6.0, "speed": 13.0, "count": 16, "burst": 2, "width": 0.35, "color": Color(0.8, 0.85, 1.0), "slow": 1.5}],
+		["Revolver", "pistol", Color(0.4, 0.4, 0.45), "Schnellfeuer", "1 Munition = 3 schnelle Schüsse.",
+			{"type": "shot", "dmg": 420.0, "range": 9.5, "speed": 24.0, "count": 1, "spread": 0.0, "burst": 3, "interval": 0.08, "width": 0.25, "color": Color(1, 0.85, 0.4), "visual": "bullet"},
+			{"type": "shot", "name": "Letzter Schuss", "desc": "Eine durchschlagende Kugel mit gewaltigem Schaden, die betäubt.", "dmg": 3000.0, "range": 14.0, "speed": 36.0, "count": 1, "spread": 0.0, "burst": 1, "interval": 0.1, "width": 0.45, "color": Color(1, 0.75, 0.3), "visual": "orb", "pierce": true, "stun": 0.8}],
+	]
+	for sp in specs:
+		var look: Dictionary = base.duplicate(true)
+		look["weapon"] = sp[1]
+		look["blade"] = sp[2]
+		var form := {"name": "Waffe: " + sp[0], "look": look, "hp_mul": 1.0, "speed_mul": 1.0, "reload_mul": 1.0,
+			"aura": Color(0.3, 1.0, 0.85, 0.5), "stance": 0.5, "combo_name": sp[3], "combo_desc": sp[4], "super": sp[6]}
+		if sp[5] is Array:
+			form["combo"] = sp[5]
+		else:
+			form["attack"] = sp[5]
+		forms.append(form)
+	var b := {"id": "varg", "name": "Varg", "title": "Der Arsenalträger", "rarity": "Hyperlegendär",
+		"rarity_color": rarity_color("Hyperlegendär"), "role": "Waffenmeister",
+		"desc": "Söldner mit einem ganzen Arsenal auf dem Rücken. Sein Gadget wechselt alle 3 Sekunden die Waffe – jede mit eigenem Angriff und eigener Super.",
+		"default_unlocked": false, "no_evolve": true, "weapon_swap": true,
+		"hp": 5200.0, "speed": 4.8, "ammo": 3, "reload": 1.2, "cooldown": 0.36, "charge_hits": 3.5, "forms": forms,
+		"gadget": {"name": "Arsenalwechsel", "desc": "Wechselt zur nächsten Waffe. Unbegrenzt, 3 s Abklingzeit.", "type": "swap", "cooldown": 3.0, "unlimited": true, "color": teal},
+		"skins": []}
+	b.skins = [
+		{"id": "varg_schatten", "name": "Schattensöldner", "price": 200, "look": {"robe": Color(0.08, 0.08, 0.1), "trim": Color(0.6, 0.2, 1.0), "hair": Color(0.15, 0.12, 0.2), "face": "ninja", "scarf_color": Color(0.6, 0.2, 1.0), "acc": ["bat_wings"]}},
+		{"id": "varg_gold", "name": "Goldener Varg", "price": 300, "look": {"robe": Color(1.0, 0.78, 0.2), "trim": Color(1, 1, 0.95), "hair": Color(1, 0.9, 0.5), "scarf_color": Color(1, 1, 0.95), "acc": ["crown", "halo"]}},
+	]
+	return b
 
 # ------------------------------------------------------------------------------------------
 static func funke() -> Dictionary:
@@ -92,7 +181,7 @@ static func bumm() -> Dictionary:
 		 {"id": "bumm_weltraum", "name": "Weltraum-Bumm", "price": 150, "hue": 0.6, "hair": Color(0.9, 0.9, 1.0)}])
 
 static func lumi() -> Dictionary:
-	return _single("lumi", "Lumi", "Sternenmagierin", "Episch", "Unterstützer",
+	return _single("lumi", "Lumara", "Sternenmagierin", "Episch", "Unterstützer",
 		"Sternenmagierin, deren Lichtkugeln Gegner durchbohren. Ihre Super lässt Sterne in alle Richtungen regnen.",
 		3400.0, 4.4, 3, 1.5,
 		{"robe": Color(0.55, 0.38, 0.95), "trim": Color(1.0, 0.85, 0.35), "skin": Color(0.98, 0.78, 0.66), "hair": Color(1.0, 0.85, 0.45),

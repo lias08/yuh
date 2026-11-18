@@ -72,4 +72,6 @@ func think(f: Fighter, m, delta: float) -> Vector2:
 			_react = randf_range(0.35, 0.75) * (1.4 - skill)
 		if low_hp and f.gadget_uses > 0 and randf() < 0.3:
 			f.try_gadget()
+		elif f.gadget().get("type", "") == "swap" and randf() < 0.15:
+			f.try_gadget()
 	return Vector2(move.x, move.z).normalized() if move.length() > 0.05 else Vector2.ZERO

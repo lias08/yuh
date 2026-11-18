@@ -291,32 +291,45 @@ func show_modes() -> void:
 func show_brawlers() -> void:
 	_clear()
 	_top_bar("BRAWLER", true)
+	var unlocked_n: int = Game.brawlers.filter(func(x): return Game.is_unlocked(x.id)).size()
+	var cnt := Game.make_label("%d / %d freigeschaltet" % [unlocked_n, Game.brawlers.size()], 24, Color(1, 0.9, 0.5))
+	_place(cnt, Vector2(1, 0), Vector2(-360, 100))
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size = Vector2(1240, 570)
+	_place(scroll, Vector2(0, 0), Vector2(20, 140))
 	var grid := GridContainer.new()
-	grid.columns = 4
-	grid.add_theme_constant_override("h_separation", 24)
-	grid.add_theme_constant_override("v_separation", 24)
-	_place(grid, Vector2(0, 0), Vector2(40, 140))
-	for b in Game.brawlers:
+	grid.columns = 6
+	grid.add_theme_constant_override("h_separation", 12)
+	grid.add_theme_constant_override("v_separation", 12)
+	scroll.add_child(grid)
+	# Nach Seltenheit sortiert (seltenste zuerst), innerhalb gleich wie in den Daten
+	var order := ["Hyperlegendär", "Legendär", "Mythisch", "Episch", "Super Selten", "Selten"]
+	var list: Array = Game.brawlers.duplicate()
+	list.sort_custom(func(a, b2): return order.find(a.rarity) < order.find(b2.rarity))
+	for b in list:
 		var unlocked := Game.is_unlocked(b.id)
-		var card := Game.make_button("", b.rarity_color.darkened(0.35) if unlocked else Color(0.3, 0.3, 0.36), Vector2(270, 330))
+		var card := Game.make_button("", b.rarity_color.darkened(0.35) if unlocked else Color(0.3, 0.3, 0.36), Vector2(195, 150))
 		var vb := VBoxContainer.new()
 		vb.alignment = BoxContainer.ALIGNMENT_CENTER
 		vb.set_anchors_preset(Control.PRESET_FULL_RECT)
 		vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		card.add_child(vb)
-		var n := Game.make_label(b.name.to_upper(), 30, Color.WHITE if unlocked else Color(0.7, 0.7, 0.75))
+		var n := Game.make_label(b.name.to_upper(), 22, Color.WHITE if unlocked else Color(0.7, 0.7, 0.75))
 		n.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		n.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		vb.add_child(n)
-		var r := Game.make_label(b.rarity, 22, b.rarity_color)
+		var r := Game.make_label(b.rarity, 17, b.rarity_color.lightened(0.2))
 		r.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		vb.add_child(r)
-		var s := Game.make_label((("%d Formen" % b.forms.size()) if b.forms.size() > 1 else b.role) if unlocked else "GESPERRT\n(nur aus Boxen)", 22, Color.WHITE)
-		s.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		vb.add_child(s)
+		var sub: String = b.role if unlocked else "GESPERRT"
 		if Game.data.selected == b.id:
-			var sel := Game.make_label("✔ AUSGEWÄHLT", 20, Color(0.5, 1, 0.5))
-			sel.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			vb.add_child(sel)
+			sub = "✔ AUSGEWÄHLT"
+		var sl := Game.make_label(sub, 16, Color(0.5, 1, 0.5) if Game.data.selected == b.id else Color.WHITE)
+		sl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		sl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vb.add_child(sl)
 		var id: String = b.id
 		card.pressed.connect(func(): show_detail(id))
 		grid.add_child(card)
@@ -334,7 +347,8 @@ func show_detail(id: String, preview_skin := "-") -> void:
 	forms.add_theme_constant_override("separation", 10)
 	_place(forms, Vector2(0, 1), Vector2(30, -120))
 	for i in (b.forms.size() if b.forms.size() > 1 else 0):
-		var fb := Game.make_button("Form %d" % (i + 1), Color(1, 0.75, 0.2) if i == stage_form else Color(0.35, 0.35, 0.5), Vector2(118, 80), 22)
+		var fl: String = String(b.forms[i].name).replace("Waffe: ", "") if b.get("weapon_swap", false) else "Form %d" % (i + 1)
+		var fb := Game.make_button(fl, Color(1, 0.75, 0.2) if i == stage_form else Color(0.35, 0.35, 0.5), Vector2(118, 80), 18 if fl.length() > 8 else 22)
 		var idx: int = i
 		fb.pressed.connect(func():
 			stage_form = idx
@@ -376,7 +390,9 @@ func show_detail(id: String, preview_skin := "-") -> void:
 	sup.custom_minimum_size = Vector2(640, 0)
 	vb.add_child(sup)
 	var evo_text := "Die Super lädt sich durch Schaden an Gegnern auf."
-	if b.forms.size() > 1:
+	if b.get("weapon_swap", false):
+		evo_text += " Gadget „%s“: wechselt jederzeit die Waffe (unbegrenzt, 3 s Abklingzeit)." % b.gadget.name
+	elif b.forms.size() > 1:
 		evo_text += " Jede Super schaltet bis Matchende die nächste Form frei."
 	var evo := Game.make_label(evo_text, 18, Color(0.8, 0.8, 0.9), 4)
 	evo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -403,8 +419,10 @@ func _skin_row(vb: VBoxContainer, b: Dictionary, unlocked: bool) -> void:
 	if skins.is_empty():
 		return
 	vb.add_child(Game.make_label("SKINS", 28, Color(1, 0.6, 0.9), 8))
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
+	var row := GridContainer.new()
+	row.columns = 3
+	row.add_theme_constant_override("h_separation", 10)
+	row.add_theme_constant_override("v_separation", 10)
 	vb.add_child(row)
 	var preview: String = screen.get_meta("skin")
 	var equipped: String = Game.data.equipped.get(b.id, "")
@@ -417,7 +435,7 @@ func _skin_row(vb: VBoxContainer, b: Dictionary, unlocked: bool) -> void:
 		var col := Color(0.3, 0.75, 0.35) if is_eq else (Color(0.25, 0.55, 1.0) if owned else Color(0.75, 0.3, 0.8))
 		if (preview == "-" and is_eq) or preview == sk.id:
 			col = col.lightened(0.25)
-		var btn := Game.make_button(label, col, Vector2(200, 90), 18)
+		var btn := Game.make_button(label, col, Vector2(205, 90), 17)
 		var sid: String = sk.id
 		btn.pressed.connect(func():
 			if owned and unlocked:
@@ -463,16 +481,26 @@ func show_shop() -> void:
 		var t: String = type
 		row.add_child(_box_card(bx.name.to_upper(), "%d Belohnungen\nBrawler-Chance: %d%%" % [bx.rolls, int(bx.brawler * 100)], bx.color,
 			"%d %s" % [bx.price, cur], Game.can_afford_box(type), func(): _buy_box(t, false)))
-	# Skins aller freigeschalteten Brawler
+	# Tagesangebote: 6 Skins freigeschalteter Brawler, wechseln jeden Tag
+	var pool: Array = []
 	for b in Game.brawlers:
 		if not Game.is_unlocked(b.id):
 			continue
 		for sk in b.get("skins", []):
-			if Game.owns_skin(sk.id):
-				continue
+			if not Game.owns_skin(sk.id):
+				pool.append([b, sk])
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(Time.get_unix_time_from_system() / 86400.0)
+	for i in range(pool.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp
+	for entry in pool.slice(0, 6):
+		var b: Dictionary = entry[0]
+		var sk: Dictionary = entry[1]
+		if true:
 			var bb: Dictionary = b
 			var sid: String = sk.id
-			row.add_child(_box_card("SKIN", "%s\nfür %s" % [sk.name, b.name], Color(0.75, 0.3, 0.8),
+			row.add_child(_box_card("TAGESANGEBOT", "%s\nfür %s" % [sk.name, b.name], Color(0.75, 0.3, 0.8),
 				"%d Edelsteine" % sk.price, Game.has_gems(sk.price), func():
 					stage_form = 0
 					_confirm_skin(bb, sid)))
@@ -932,6 +960,7 @@ func _run_tests() -> void:
 		if b.id == "klingengeist":
 			continue
 		Game.data.selected = b.id
+		Game.data.mode = "training"
 		var mm = preload("res://scripts/match.gd").new()
 		add_child(mm)
 		await get_tree().process_frame
@@ -943,7 +972,13 @@ func _run_tests() -> void:
 		await get_tree().create_timer(1.3).timeout
 		var d1: float = mm.total_damage
 		pl.super_charge = 1.0
-		pl.position = Vector3(0, 0, 1.5)
+		# Ziel könnte durch Rückstoß verschoben sein: Spieler wieder 1,5 m davor stellen
+		var near = null
+		for t in mm._targets(pl):
+			if near == null or (t.pos - pl.position).length() < (near.pos - pl.position).length():
+				near = t
+		pl.position = (near.pos + Vector3(0, 0, 1.5)) if near != null else Vector3(0, 0, 1.5)
+		mm._aim_frac = 0.3
 		var sup_ok := pl.try_super(mm.auto_aim(20.0))
 		await get_tree().create_timer(1.6).timeout
 		var d2: float = mm.total_damage - d1

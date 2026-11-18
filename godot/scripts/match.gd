@@ -7,6 +7,7 @@ signal exit_requested
 const ARENA_W := 20.0
 const ARENA_H := 26.0
 
+var _static: Node3D
 var player: Fighter
 var dummies: Array = []
 var fighters: Array = []      # alle Brawler (Spieler + Bots)
@@ -167,6 +168,9 @@ void fragment() {
 	outer.material_override = ModelBuilder.mat(Color(0.42, 0.72, 0.35), false)
 	add_child(outer)
 
+	# Statische Teile (Mauern, Deko) werden am Ende zu wenigen Meshes zusammengefasst (Leistung).
+	_static = Node3D.new()
+	add_child(_static)
 	# Randmauern + Deckung
 	var wall_col := Color(0.78, 0.48, 0.32)
 	var top_col := Color(0.95, 0.65, 0.42)
@@ -192,17 +196,18 @@ void fragment() {
 		for i in 7:
 			var a := i / 7.0 * TAU
 			var off := Vector3(cos(a), 0, sin(a)) * (0.0 if i == 0 else 0.55)
-			ModelBuilder.part(self, "sphere", p + off + Vector3(0, 0.5 + (0.25 if i == 0 else 0.0), 0), Vector3.ONE * (1.1 if i == 0 else 0.8), Color(0.32, 0.72, 0.32).lightened((i % 3) * 0.06))
+			ModelBuilder.part(_static, "sphere", p + off + Vector3(0, 0.5 + (0.25 if i == 0 else 0.0), 0), Vector3.ONE * (1.1 if i == 0 else 0.8), Color(0.32, 0.72, 0.32).lightened((i % 3) * 0.06))
 	# Kisten als Deko am Rand
 	for p in [Vector3(-8.5, 0, 11), Vector3(8.5, 0, 11), Vector3(-8.5, 0, -11.5), Vector3(8.5, 0, -11.5)]:
-		ModelBuilder.part(self, "rbox", p + Vector3(0, 0.45, 0), Vector3(0.9, 0.9, 0.9), Color(0.82, 0.55, 0.3))
-		ModelBuilder.part(self, "box", p + Vector3(0, 0.45, 0), Vector3(0.94, 0.12, 0.94), Color(0.55, 0.35, 0.2), Vector3.ZERO, false)
+		ModelBuilder.part(_static, "rbox", p + Vector3(0, 0.45, 0), Vector3(0.9, 0.9, 0.9), Color(0.82, 0.55, 0.3))
+		ModelBuilder.part(_static, "box", p + Vector3(0, 0.45, 0), Vector3(0.94, 0.12, 0.94), Color(0.55, 0.35, 0.2), Vector3.ZERO, false)
 	for i in 26:
 		var a := i / 26.0 * TAU
 		var r := randf_range(16.5, 22.0)
 		var tp := Vector3(cos(a) * r, 0, sin(a) * r * 1.2)
-		ModelBuilder.part(self, "cyl", tp + Vector3(0, 0.6, 0), Vector3(0.3, 1.2, 0.3), Color(0.5, 0.33, 0.2))
-		ModelBuilder.part(self, "sphere", tp + Vector3(0, 1.7, 0), Vector3.ONE * randf_range(1.3, 1.8), Color(0.28, 0.62, 0.32))
+		ModelBuilder.part(_static, "cyl", tp + Vector3(0, 0.6, 0), Vector3(0.3, 1.2, 0.3), Color(0.5, 0.33, 0.2))
+		ModelBuilder.part(_static, "sphere", tp + Vector3(0, 1.7, 0), Vector3.ONE * randf_range(1.3, 1.8), Color(0.28, 0.62, 0.32))
+	ModelBuilder.merge_tree(_static)
 
 func _add_wall(r: Rect2, side: Color, top: Color, breakable := false) -> void:
 	# Wand aus einzelnen, abgerundeten Blöcken mit heller Deckplatte (leicht unregelmäßig).
@@ -224,8 +229,8 @@ func _add_wall(r: Rect2, side: Color, top: Color, breakable := false) -> void:
 			else:
 				var h := 1.15 + fmod(abs(c.x * 3.7 + c.z * 1.3), 0.25)
 				var shade := side.darkened(fmod(abs(c.x * 1.7 + c.z * 2.9), 0.12))
-				nodes.append(ModelBuilder.part(self, "rbox", c + Vector3(0, h * 0.5, 0), Vector3(bw, h, bd), shade))
-				nodes.append(ModelBuilder.part(self, "rbox", c + Vector3(0, h + 0.04, 0), Vector3(bw + 0.06, 0.16, bd + 0.06), top, Vector3.ZERO, false))
+				ModelBuilder.part(_static, "rbox", c + Vector3(0, h * 0.5, 0), Vector3(bw, h, bd), shade)
+				ModelBuilder.part(_static, "rbox", c + Vector3(0, h + 0.04, 0), Vector3(bw + 0.06, 0.16, bd + 0.06), top, Vector3.ZERO, false)
 			wall_blocks.append({"rect": rect, "nodes": nodes, "breakable": breakable, "color": Color(0.85, 0.58, 0.32) if breakable else side})
 	_rebuild_walls()
 
@@ -565,6 +570,11 @@ func nova(f: Fighter, s: Dictionary) -> void:
 func use_gadget(f: Fighter, g: Dictionary) -> void:
 	var c: Color = g.get("color", Color(0.4, 1.0, 0.5))
 	match g.type:
+		"swap":
+			# Waffenwechsel: nächste Waffe aus dem Arsenal (eigener Angriff + eigene Super)
+			f.apply_form((f.form_index + 1) % f.def.forms.size(), false)
+			_burst(f.position + Vector3(0, 1.0, 0), c, 22, 4.0, 0.18)
+			_ring_fx(f.position, 1.4, c, 0.25)
 		"blink":
 			_burst(f.position + Vector3(0, 0.9, 0), c, 20, 3.0, 0.2)
 			f.position = move_circle(f.position, f.aim_dir * g.get("range", 4.0), f.radius)
@@ -597,7 +607,7 @@ func use_gadget(f: Fighter, g: Dictionary) -> void:
 			tr.position = Vector3(0, 0.5, 0)
 			fx.append({"node": tr, "t": 0.0, "dur": g.get("duration", 3.0), "kind": "particles"})
 	Game.play_sfx("ready", 0.8, 1.3)
-	show_banner(g.name.to_upper())
+	show_banner(f.form().name.to_upper() if g.type == "swap" else g.name.to_upper())
 
 func charge_effect(f: Fighter, sup: Dictionary) -> void:
 	Game.play_sfx("charge", 1.0)
@@ -876,6 +886,13 @@ func _update_stun_fx(d: Dictionary, stunned: bool, now: float) -> void:
 			d.stun_fx.queue_free()
 			d.stun_fx = null
 
+static func _seg_dist_xz(p: Vector3, a: Vector3, b: Vector3) -> float:
+	var pa := Vector2(p.x - a.x, p.z - a.z)
+	var ba := Vector2(b.x - a.x, b.z - a.z)
+	var l2 := ba.length_squared()
+	var t: float = 0.0 if l2 < 0.000001 else clampf(pa.dot(ba) / l2, 0.0, 1.0)
+	return (pa - ba * t).length()
+
 func _update_waves(delta: float) -> void:
 	for i in range(waves.size() - 1, -1, -1):
 		var w: Dictionary = waves[i]
@@ -896,9 +913,8 @@ func _update_waves(delta: float) -> void:
 			for d in _targets(w.owner):
 				if d in w.hit:
 					continue
-				var to: Vector3 = d.pos - nxt
-				to.y = 0
-				if to.length() <= w.width + d.radius:
+				# Strecken-Test (alte → neue Position): auch bei Rucklern fliegt nichts durch Gegner hindurch
+				if _seg_dist_xz(d.pos, node.position, nxt) <= w.width + d.radius:
 					w.hit.append(d)
 					_damage_dummy(d, w.dmg, w.owner, w.fx, nxt - w.dir)
 					if not w.pierce:
@@ -1512,7 +1528,7 @@ func _update_hud(delta: float) -> void:
 	if gad_btn.visible:
 		gad_btn.dim = player.gadget_uses <= 0 or player.gadget_cd > 0.0
 		gad_btn.charge = 1.0 - player.gadget_cd / g.get("cooldown", 5.0) if player.gadget_uses > 0 else 0.0
-		gad_label.text = "%s (%d)" % [g.name, player.gadget_uses]
+		gad_label.text = ("%s (∞)" % g.name) if g.get("unlimited", false) else ("%s (%d)" % [g.name, player.gadget_uses])
 		gad_btn.queue_redraw()
 	for j in [move_joy, atk_joy, sup_joy]:
 		j.queue_redraw()
