@@ -1,0 +1,18 @@
+Eigene Voicelines
+=================
+Lege hier Audiodateien ab, dann spricht der Brawler sie im Match:
+
+  voices/<brawler_id>/<ereignis>.ogg   (auch .wav oder .mp3)
+
+Ereignisse: start, kill, super, death, win, lose
+Mehrere Varianten pro Ereignis: kill_1.ogg, kill_2.ogg, ...
+
+Beispiel: voices/zunder/kill_1.ogg
+
+Die Brawler-ID ist der Name in Kleinbuchstaben, ä/ö/ü/ß als ae/oe/ue/ss,
+Leer- und Bindestriche als _ (z. B. "Kaiser Frost" -> kaiser_frost,
+"Erdbeben-Kalle" -> erdbeben_kalle). Die ersten Brawler: klingengeist, varg,
+funke, brocken, bumm, lumi, frosti, volta, nebel, granit.
+
+Ohne Datei zeigt der Brawler seinen Spruch nur als Sprechblase.
+Nutze nur Aufnahmen, an denen du die Rechte hast (z. B. selbst eingesprochen).

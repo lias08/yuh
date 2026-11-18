@@ -45,6 +45,11 @@ func think(f: Fighter, m, delta: float) -> Vector2:
 	elif dist < desired - 1.2:
 		move = -dir
 	move += Vector3(-dir.z, 0, dir.x) * _strafe * 0.6
+	# Showdown: vor der Giftwolke in Richtung Mitte fliehen
+	if m.mode == "showdown":
+		var flat := Vector3(f.position.x, 0, f.position.z)
+		if flat.length() > m.gas_r - 2.5:
+			move = -flat.normalized() * 1.5 + move * 0.3
 	# Hängt an einer Wand fest? Richtung drehen.
 	if (f.position - _last_pos).length() < 0.02 and move.length() > 0.1:
 		_stuck_t += delta

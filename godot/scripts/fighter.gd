@@ -234,6 +234,8 @@ func try_super(dir: Vector3) -> bool:
 		return false
 	super_charge = 0.0
 	super_uses += 1
+	if arena.has_method("voice"):
+		arena.voice(self, "super")
 	_last_action = _time
 	if dir.length_squared() > 0.0001:
 		aim_dir = dir.normalized()

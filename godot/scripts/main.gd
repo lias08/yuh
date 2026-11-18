@@ -1259,7 +1259,7 @@ func _run_tests() -> void:
 		if f != ms.player:
 			ms._damage_fighter(f, 999999.0, ms.player, {}, Vector3.INF)
 	log.append("Showdown: %d Brawler, Ergebnis %s Platz %d, K.O.s %d" % [ms.fighters.size(), ms.result.get("outcome", "-"), ms.result.get("rank", 0), ms.player.kills])
-	ok = ok and ms.fighters.size() == 7 and ms.result.get("outcome", "") == "victory" and ms.result.rank == 1
+	ok = ok and ms.fighters.size() == 9 and ms.ARENA_W > 30.0 and ms.result.get("outcome", "") == "victory" and ms.result.rank == 1
 	ms.queue_free()
 	Game.data.mode = "training"
 	# Trophäenpfad & Sprache

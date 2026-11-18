@@ -4,10 +4,18 @@ extends Node3D
 
 signal exit_requested
 
-const ARENA_W := 20.0
-const ARENA_H := 26.0
+var ARENA_W := 20.0   # Arenagröße (Showdown: deutlich größer)
+var ARENA_H := 26.0
 
 var _static: Node3D
+const VoiceData = preload("res://scripts/voice_lines.gd")
+var _voice_cd := {}           # Fighter-ID -> Zeitpunkt, ab dem wieder gesprochen werden darf
+var _voice_player: AudioStreamPlayer
+var _bubbles := {}            # Fighter-ID -> aktuelle Sprechblase
+var gas_r := 999.0            # Showdown: Radius der sicheren Zone (Giftwolke schließt sich)
+var _gas_node: MeshInstance3D
+var _gas_t := 0.0
+var _gas_tick := 0.0
 var player: Fighter
 var dummies: Array = []
 var fighters: Array = []      # alle Brawler (Spieler + Bots)
@@ -81,9 +89,12 @@ class JoyDraw extends Control:
 
 # ==================================================================== Aufbau
 func _ready() -> void:
+	mode = Game.data.get("mode", "training")
+	if mode == "showdown":
+		ARENA_W = 40.0
+		ARENA_H = 48.0
 	_build_environment()
 	_build_arena()
-	mode = Game.data.get("mode", "training")
 	player = _spawn_fighter(Game.selected_brawler(), 0, false, Game.data.get("player_name", "Du"))
 	player.transformed.connect(_on_transformed)
 	match mode:
@@ -93,8 +104,8 @@ func _ready() -> void:
 			for i in 3:
 				_spawn_fighter(_random_brawler(), 1, true, ["Grimm", "Vex", "Schnapper", "Rocco", "Mira", "Blitz"][randi() % 6])
 		"showdown":
-			var names := ["Grimm", "Vex", "Schnapper", "Rocco", "Mira", "Blitz"]
-			for i in 6:
+			var names := ["Grimm", "Vex", "Schnapper", "Rocco", "Mira", "Blitz", "Kora", "Dex"]
+			for i in 8:
 				_spawn_fighter(_random_brawler(), i + 1, true, names[i])
 		_:
 			_spawn_dummy(Vector3(-4, 0, -4), "static")
@@ -103,11 +114,24 @@ func _ready() -> void:
 			_spawn_dummy(Vector3(0, 0, -1), "static")
 	for f in fighters:
 		f.position = _spawn_point(f)
+	if mode == "showdown":
+		gas_r = Vector2(ARENA_W, ARENA_H).length() * 0.5 + 1.0
+		_gas_node = MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 1.0; cm.bottom_radius = 1.0; cm.height = 3.0
+		cm.cap_top = false; cm.cap_bottom = false; cm.radial_segments = 64
+		_gas_node.mesh = cm
+		_gas_node.material_override = _fx_mat(Color(0.4, 1.0, 0.35, 0.35))
+		_gas_node.position.y = 1.5
+		add_child(_gas_node)
 	aim_mesh = MeshInstance3D.new()
 	aim_mesh.material_override = _aim_mat()
 	aim_mesh.visible = false
 	add_child(aim_mesh)
 	_build_hud()
+	_voice_player = AudioStreamPlayer.new()
+	add_child(_voice_player)
+	get_tree().create_timer(0.6, false).timeout.connect(func(): voice(player, "start", true))
 	_cam_focus = player.position
 	_update_camera(1.0)
 
@@ -180,34 +204,75 @@ void fragment() {
 	_add_wall(Rect2(-hw - 1, hh, ARENA_W + 2, 1), wall_col, top_col)
 	_add_wall(Rect2(-hw - 1, -hh, 1, ARENA_H), wall_col, top_col)
 	_add_wall(Rect2(hw, -hh, 1, ARENA_H), wall_col, top_col)
-	_add_wall(Rect2(-7, 2, 3, 1), wall_col, top_col)
-	_add_wall(Rect2(4, 2, 3, 1), wall_col, top_col)
-	_add_wall(Rect2(-1.5, -9, 3, 1), wall_col, top_col)
-	_add_wall(Rect2(-8, -9, 1, 3), wall_col, top_col)
-	_add_wall(Rect2(7, -9, 1, 3), wall_col, top_col)
-	# Zerstörbare Kisten-Reihen (Supers & Explosionen können sie sprengen)
-	_add_wall(Rect2(-3, -3.5, 2, 1), wall_col, top_col, true)
-	_add_wall(Rect2(1, -3.5, 2, 1), wall_col, top_col, true)
-	_add_wall(Rect2(-6, 5, 1, 2), wall_col, top_col, true)
-	_add_wall(Rect2(5, 5, 1, 2), wall_col, top_col, true)
-	# Büsche & Deko (nur Optik)
-	for p in [Vector3(-7, 0, 7), Vector3(7, 0, 7), Vector3(-6, 0, -1), Vector3(6, 0, -1)]:
-		# Buschgruppe aus mehreren flauschigen Kugeln
+	if mode == "showdown":
+		_build_showdown_layout(wall_col, top_col)
+	else:
+		_add_wall(Rect2(-7, 2, 3, 1), wall_col, top_col)
+		_add_wall(Rect2(4, 2, 3, 1), wall_col, top_col)
+		_add_wall(Rect2(-1.5, -9, 3, 1), wall_col, top_col)
+		_add_wall(Rect2(-8, -9, 1, 3), wall_col, top_col)
+		_add_wall(Rect2(7, -9, 1, 3), wall_col, top_col)
+		# Zerstörbare Kisten-Reihen (Supers & Explosionen können sie sprengen)
+		_add_wall(Rect2(-3, -3.5, 2, 1), wall_col, top_col, true)
+		_add_wall(Rect2(1, -3.5, 2, 1), wall_col, top_col, true)
+		_add_wall(Rect2(-6, 5, 1, 2), wall_col, top_col, true)
+		_add_wall(Rect2(5, 5, 1, 2), wall_col, top_col, true)
+		# Büsche & Deko (nur Optik)
+		for p in [Vector3(-7, 0, 7), Vector3(7, 0, 7), Vector3(-6, 0, -1), Vector3(6, 0, -1)]:
+			# Buschgruppe aus mehreren flauschigen Kugeln
+			for i in 7:
+				var a := i / 7.0 * TAU
+				var off := Vector3(cos(a), 0, sin(a)) * (0.0 if i == 0 else 0.55)
+				ModelBuilder.part(_static, "sphere", p + off + Vector3(0, 0.5 + (0.25 if i == 0 else 0.0), 0), Vector3.ONE * (1.1 if i == 0 else 0.8), Color(0.32, 0.72, 0.32).lightened((i % 3) * 0.06))
+		# Kisten als Deko am Rand
+		for p in [Vector3(-8.5, 0, 11), Vector3(8.5, 0, 11), Vector3(-8.5, 0, -11.5), Vector3(8.5, 0, -11.5)]:
+			ModelBuilder.part(_static, "rbox", p + Vector3(0, 0.45, 0), Vector3(0.9, 0.9, 0.9), Color(0.82, 0.55, 0.3))
+			ModelBuilder.part(_static, "box", p + Vector3(0, 0.45, 0), Vector3(0.94, 0.12, 0.94), Color(0.55, 0.35, 0.2), Vector3.ZERO, false)
+		for i in 26:
+			var a := i / 26.0 * TAU
+			var r := randf_range(16.5, 22.0)
+			var tp := Vector3(cos(a) * r, 0, sin(a) * r * 1.2)
+			ModelBuilder.part(_static, "cyl", tp + Vector3(0, 0.6, 0), Vector3(0.3, 1.2, 0.3), Color(0.5, 0.33, 0.2))
+			ModelBuilder.part(_static, "sphere", tp + Vector3(0, 1.7, 0), Vector3.ONE * randf_range(1.3, 1.8), Color(0.28, 0.62, 0.32))
+
+	ModelBuilder.merge_tree(_static)
+
+## Große Showdown-Karte: symmetrische Deckungsinseln, Kistenreihen, Büsche und Bäume ringsum.
+func _build_showdown_layout(wall_col: Color, top_col: Color) -> void:
+	var hw := ARENA_W / 2.0
+	var hh := ARENA_H / 2.0
+	# Zentrum: Kreuz aus Kisten (zerstörbar)
+	_add_wall(Rect2(-3, -0.5, 2, 1), wall_col, top_col, true)
+	_add_wall(Rect2(1, -0.5, 2, 1), wall_col, top_col, true)
+	_add_wall(Rect2(-0.5, -3, 1, 2), wall_col, top_col, true)
+	_add_wall(Rect2(-0.5, 1, 1, 2), wall_col, top_col, true)
+	# 4-fach gespiegelte Deckungen
+	var shapes := [
+		[Rect2(4, 4, 4, 1), false], [Rect2(4, 5, 1, 3), false], [Rect2(11, 2, 1, 5), false], [Rect2(14, 10, 3, 1), false],
+		[Rect2(6, 12, 1, 4), false], [Rect2(9, 9, 2, 1), true], [Rect2(2, 9, 2, 1), true], [Rect2(15, 4, 2, 1), true],
+		[Rect2(10, 17, 4, 1), false], [Rect2(2, 16, 1, 3), true], [Rect2(16, 15, 1, 3), false], [Rect2(7, 20, 2, 1), true]]
+	for sh in shapes:
+		var r: Rect2 = sh[0]
+		for sx in [1, -1]:
+			for sz in [1, -1]:
+				var x0: float = r.position.x if sx > 0 else -r.position.x - r.size.x
+				var z0: float = r.position.y if sz > 0 else -r.position.y - r.size.y
+				if abs(x0) + r.size.x > hw or abs(z0) + r.size.y > hh:
+					continue
+				_add_wall(Rect2(x0, z0, r.size.x, r.size.y), wall_col, top_col, sh[1])
+	# Büsche verteilt (Deko)
+	for p in [Vector3(7, 0, 0), Vector3(-7, 0, 0), Vector3(0, 0, 8), Vector3(0, 0, -8), Vector3(13, 0, 13), Vector3(-13, 0, 13),
+			Vector3(13, 0, -13), Vector3(-13, 0, -13), Vector3(17, 0, 0), Vector3(-17, 0, 0), Vector3(0, 0, 20), Vector3(0, 0, -20)]:
 		for i in 7:
 			var a := i / 7.0 * TAU
 			var off := Vector3(cos(a), 0, sin(a)) * (0.0 if i == 0 else 0.55)
 			ModelBuilder.part(_static, "sphere", p + off + Vector3(0, 0.5 + (0.25 if i == 0 else 0.0), 0), Vector3.ONE * (1.1 if i == 0 else 0.8), Color(0.32, 0.72, 0.32).lightened((i % 3) * 0.06))
-	# Kisten als Deko am Rand
-	for p in [Vector3(-8.5, 0, 11), Vector3(8.5, 0, 11), Vector3(-8.5, 0, -11.5), Vector3(8.5, 0, -11.5)]:
-		ModelBuilder.part(_static, "rbox", p + Vector3(0, 0.45, 0), Vector3(0.9, 0.9, 0.9), Color(0.82, 0.55, 0.3))
-		ModelBuilder.part(_static, "box", p + Vector3(0, 0.45, 0), Vector3(0.94, 0.12, 0.94), Color(0.55, 0.35, 0.2), Vector3.ZERO, false)
-	for i in 26:
-		var a := i / 26.0 * TAU
-		var r := randf_range(16.5, 22.0)
-		var tp := Vector3(cos(a) * r, 0, sin(a) * r * 1.2)
+	for i in 40:
+		var a := i / 40.0 * TAU
+		var r := randf_range(hw + 3.0, hw + 9.0)
+		var tp := Vector3(cos(a) * r, 0, sin(a) * r * (hh / hw))
 		ModelBuilder.part(_static, "cyl", tp + Vector3(0, 0.6, 0), Vector3(0.3, 1.2, 0.3), Color(0.5, 0.33, 0.2))
 		ModelBuilder.part(_static, "sphere", tp + Vector3(0, 1.7, 0), Vector3.ONE * randf_range(1.3, 1.8), Color(0.28, 0.62, 0.32))
-	ModelBuilder.merge_tree(_static)
 
 func _add_wall(r: Rect2, side: Color, top: Color, breakable := false) -> void:
 	# Wand aus einzelnen, abgerundeten Blöcken mit heller Deckplatte (leicht unregelmäßig).
@@ -292,7 +357,7 @@ func _spawn_point(f: Fighter) -> Vector3:
 	if mode == "showdown":
 		var i: int = fighters.find(f)
 		var a: float = TAU * i / max(1, fighters.size()) + PI / 2.0
-		return resolve_circle(Vector3(cos(a) * 8.0, 0, sin(a) * 10.0), 0.5)
+		return resolve_circle(Vector3(cos(a) * ARENA_W * 0.4, 0, sin(a) * ARENA_H * 0.4), 0.5)
 	var same: Array = fighters.filter(func(x): return x.team == f.team)
 	var idx: int = same.find(f)
 	var z: float = 10.5 if f.team == 0 else -11.0
@@ -701,6 +766,8 @@ func _on_fighter_died(v: Fighter, killer: Fighter) -> void:
 	Game.play_sfx("explosion", 0.6, 1.3)
 	if killer != null and killer != v:
 		killer.kills += 1
+		voice(killer, "kill")
+	voice(v, "death", true)
 	_add_feed(("%s besiegt %s" % [killer.display_name, v.display_name]) if killer != null else ("%s wurde besiegt" % v.display_name))
 	match mode:
 		"team":
@@ -737,6 +804,7 @@ func _finish(outcome: String, rank: int) -> void:
 		return
 	finished = true
 	result = {"mode": mode, "outcome": outcome, "rank": rank, "kills": player.kills, "score": score.duplicate()}
+	voice(player, "win" if outcome == "victory" else "lose", true)
 	Game.play_sfx("transform" if outcome == "victory" else "hurt", 1.0, 1.0 if outcome == "victory" else 0.6)
 	var layer := CanvasLayer.new()
 	layer.layer = 25
@@ -1265,6 +1333,42 @@ func _update_abilities(delta: float) -> void:
 			elif f.buff_until > f.now() and randf() < 0.3:
 				aura_particle(f.position + Vector3(randf_range(-0.4, 0.4), randf_range(0.2, 1.6), randf_range(-0.4, 0.4)), f.buff_color)
 
+# ==================================================================== Voicelines
+## Brawler sagt etwas: Sprechblase über dem Kopf + (falls vorhanden) eigene Audiodatei.
+func voice(f: Fighter, event: String, force := false) -> void:
+	if f == null or not is_instance_valid(f):
+		return
+	var id := f.get_instance_id()
+	var now := Time.get_ticks_msec() / 1000.0
+	if not force and _voice_cd.get(id, 0.0) > now:
+		return
+	# Bots reden nur, wenn sie in der Nähe des Spielers sind
+	if f != player and (f.position - player.position).length() > 14.0:
+		return
+	_voice_cd[id] = now + 3.0
+	var text: String = VoiceData.line(f.def, event)
+	if text != "":
+		var l := Label3D.new()
+		l.text = text
+		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		l.no_depth_test = true
+		l.font_size = 44
+		l.outline_size = 14
+		l.modulate = Color(1, 1, 1)
+		l.outline_modulate = Color(0.12, 0.08, 0.2)
+		l.pixel_size = 0.006
+		l.position = f.position + Vector3(0, f.rig.get("height", 2.0) + 1.1, 0)
+		add_child(l)
+		if _bubbles.has(id) and is_instance_valid(_bubbles[id]):
+			_bubbles[id].queue_free()
+		_bubbles[id] = l
+		fx.append({"node": l, "t": 0.0, "dur": 1.9, "kind": "bubble", "f": f, "h": f.rig.get("height", 2.0) + 1.1})
+	var stream: AudioStream = VoiceData.audio(f.def.id, event)
+	if stream != null and (f == player or (f.position - player.position).length() < 10.0):
+		_voice_player.stream = stream
+		_voice_player.volume_db = linear_to_db(max(0.05, Game.data.sfx))
+		_voice_player.play()
+
 # ==================================================================== Update
 func _process(delta: float) -> void:
 	var input := _joy_vector()
@@ -1294,6 +1398,19 @@ func _process(delta: float) -> void:
 				if not finished:
 					f.respawn(_spawn_point(f))
 					_ring_fx(f.position, 1.5, Color(0.5, 0.9, 1.0), 0.4)
+	# Showdown: Giftwolke zieht sich ab 20 s langsam zusammen, außerhalb gibt es Schaden
+	if mode == "showdown" and not finished:
+		_gas_t += delta
+		if _gas_t > 20.0:
+			gas_r = max(4.0, gas_r - delta * 0.28)
+		_gas_node.scale = Vector3(gas_r, 1.0, gas_r)
+		_gas_tick -= delta
+		if _gas_tick <= 0.0:
+			_gas_tick = 1.0
+			for f in fighters:
+				if f.alive and Vector2(f.position.x, f.position.z).length() > gas_r:
+					_damage_fighter(f, f.max_hp * 0.12, null, {}, Vector3.INF)
+					_burst(f.position + Vector3(0, 1.0, 0), Color(0.4, 1.0, 0.35), 10, 2.0, 0.2)
 	# Zeitlimit Teamkampf
 	if mode == "team" and not finished:
 		time_left -= delta
@@ -1895,6 +2012,11 @@ func _update_fx(delta: float) -> void:
 				var sm := node.material_override as ShaderMaterial
 				sm.set_shader_parameter("progress", k * 1.5)
 				sm.set_shader_parameter("fade", 1.0 - smoothstep(0.6, 1.0, k))
+			"bubble":
+				if is_instance_valid(f.f):
+					node.position = f.f.position + Vector3(0, f.h + k * 0.4, 0)
+				(node as Label3D).modulate.a = 1.0 - smoothstep(0.75, 1.0, k)
+				(node as Label3D).outline_modulate.a = 1.0 - smoothstep(0.75, 1.0, k)
 			"beam":
 				node.scale.x = f.w * 1.2 * (1.0 - k)
 				node.scale.y = f.w * 0.6 * (1.0 - k)
