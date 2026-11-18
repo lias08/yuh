@@ -59,7 +59,7 @@ func _top_bar(title: String, back: bool) -> void:
 		_place(b, Vector2(0, 0), Vector2(20, 18))
 	var t := Game.make_label(title, 44, Color.WHITE, 12)
 	_place(t, Vector2(0, 0), Vector2(230 if back else 30, 26))
-	var cur := Game.make_label("Münzen: %d    Edelsteine: %d" % [Game.data.coins, Game.data.gems], 26, Color(1, 0.88, 0.3), 8)
+	var cur := Game.make_label(Game.currency_text(), 26, Color(1, 0.88, 0.3), 8)
 	_place(cur, Vector2(1, 0), Vector2(-520, 34))
 
 ## 3D-Bühne mit dem Brawler (eigene Welt in einem SubViewport).
@@ -338,7 +338,7 @@ func show_shop() -> void:
 			var bb: Dictionary = b
 			var sid: String = sk.id
 			row.add_child(_box_card("SKIN", "%s\nfür %s" % [sk.name, b.name], Color(0.75, 0.3, 0.8),
-				"%d Edelsteine" % sk.price, Game.data.gems >= sk.price, func():
+				"%d Edelsteine" % sk.price, Game.has_gems(sk.price), func():
 					stage_form = 0
 					_confirm_skin(bb, sid)))
 
@@ -690,9 +690,15 @@ func _run_tests() -> void:
 	var ok := true
 	var log := PackedStringArray()
 	Game.data.unlocked = ["klingengeist"]
+	Game.data.selected = "klingengeist"
+	Game.data.infinite = false
 	log.append("Code falsch: '%s'" % Game.redeem_code("12"))
 	ok = ok and Game.redeem_code("12") == ""
 	ok = ok and Game.redeem_code("67") != ""
+	# Code 67 = unendlich Ressourcen: Kauf darf nichts kosten
+	var gems_before: int = Game.data.gems
+	ok = ok and Game.is_infinite() and Game.open_box("mega").size() > 0 and Game.data.gems >= gems_before
+	log.append("Code 67: unendlich=%s, Edelsteine nach Mega-Box unverändert=%s" % [Game.is_infinite(), Game.data.gems >= gems_before])
 	var m = preload("res://scripts/match.gd").new()
 	m.test_mode = true
 	add_child(m)

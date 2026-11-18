@@ -9,7 +9,7 @@ const SAVE_PATH := "user://brawlarena_save.json"
 var data := {
 	"coins": 500, "gems": 20, "trophies": 0, "unlocked": [], "selected": "klingengeist",
 	"music": 0.6, "sfx": 0.8, "boxes_opened": 0,
-	"owned_skins": [], "equipped": {}, "last_free_box": 0.0,
+	"owned_skins": [], "equipped": {}, "last_free_box": 0.0, "infinite": false,
 }
 var brawlers: Array = []
 var _sfx_cache := {}
@@ -70,6 +70,7 @@ func redeem_code(code: String) -> String:
 		if not is_unlocked(b.id):
 			data.unlocked.append(b.id)
 			count += 1
+	data.infinite = true
 	var skins := 0
 	for b in brawlers:
 		for sk in b.get("skins", []):
@@ -78,8 +79,25 @@ func redeem_code(code: String) -> String:
 				skins += 1
 	save_game()
 	if count == 0 and skins == 0:
-		return "Du besitzt bereits alle Brawler und Skins!"
-	return "%d Brawler und %d Skins freigeschaltet!" % [count, skins]
+		return "Du besitzt bereits alle Brawler und Skins!\nUnendlich Münzen und Edelsteine sind aktiv."
+	return "%d Brawler und %d Skins freigeschaltet!\nAb jetzt: unendlich Münzen und Edelsteine." % [count, skins]
+
+# ------------------------------------------------------------------ Währung
+## Unendliche Ressourcen (Code 67): Käufe kosten nichts.
+func is_infinite() -> bool:
+	return data.get("infinite", false)
+
+func has_gems(amount: int) -> bool:
+	return is_infinite() or data.gems >= amount
+
+func spend(currency: String, amount: int) -> void:
+	if not is_infinite():
+		data[currency] -= amount
+
+func currency_text() -> String:
+	if is_infinite():
+		return "Münzen: ∞    Edelsteine: ∞"
+	return "Münzen: %d    Edelsteine: %d" % [data.coins, data.gems]
 
 # ------------------------------------------------------------------ Skins
 func get_skin(b: Dictionary, skin_id: String) -> Dictionary:
@@ -111,9 +129,9 @@ func buy_skin(b: Dictionary, skin_id: String) -> String:
 	var sk := get_skin(b, skin_id)
 	if sk.is_empty() or owns_skin(skin_id):
 		return ""
-	if data.gems < sk.price:
+	if not has_gems(sk.price):
 		return "Nicht genug Edelsteine! (%d benötigt)" % sk.price
-	data.gems -= sk.price
+	spend("gems", sk.price)
 	data.owned_skins.append(skin_id)
 	data.equipped[b.id] = skin_id
 	save_game()
@@ -133,7 +151,7 @@ const FREE_BOX_SECONDS := 4 * 3600
 
 func can_afford_box(type: String) -> bool:
 	var bx: Dictionary = BOXES[type]
-	return data[bx.currency] >= bx.price
+	return data.get("infinite", false) or data[bx.currency] >= bx.price
 
 func free_box_ready() -> bool:
 	return Time.get_unix_time_from_system() - float(data.last_free_box) >= FREE_BOX_SECONDS
@@ -152,7 +170,7 @@ func open_box(type: String, free := false) -> Array:
 	else:
 		if not can_afford_box(type):
 			return []
-		data[bx.currency] -= bx.price
+		spend(bx.currency, bx.price)
 	data.boxes_opened += 1
 	var rewards: Array = []
 	var coins := 0
