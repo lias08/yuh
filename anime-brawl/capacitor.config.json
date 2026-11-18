@@ -1,0 +1,6 @@
+{
+  "appId": "de.animebrawl.ultimateclash",
+  "appName": "Anime Brawl",
+  "webDir": "dist",
+  "android": { "backgroundColor": "#161430", "allowMixedContent": false }
+}

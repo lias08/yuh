@@ -88,6 +88,7 @@ export class World {
     this.over = false; this.result = null;
     this.popThrottle = new Map();
     this.stats = { kills: 0 };
+    this.botBrainClass = BotBrain;
     this.mode = createMode(o.mode.id, this, o);
     this.mode.spawnAll(o.lineups);
     this.player = this.fighters.find(f => f.isPlayer);

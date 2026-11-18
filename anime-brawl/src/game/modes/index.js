@@ -504,16 +504,70 @@ class TrainingMode extends Mode {
     const l = lineups.find(x => x.isPlayer);
     const f = this.w.spawnFighter(l, p.x, p.z); f.spawnIdx = 0;
     f.gadgets = 99; if (f.gadgetIdx < 0) { f.gadgetIdx = 0; f.gadgets = 99; }
+    if (f.spIdx < 0) { f.spIdx = 0; f.hooks = f.collectHooks(); f.recalcStats(); f.hp = f.maxHp; }
+    f.overdrive = true;
+  }
+  dummyMesh(color = 0xb83a3a) {
+    const { group } = buildCharacter({ skin: 0xd8c8a8, build: 'muscle', hair: { style: 'none' }, eyes: { type: 'dots', color: 0x222222 }, mouth: 'flat', top: { type: 'shirt', color, sleeves: 'short' }, bottom: { type: 'pants', color: 0x6a5a4a }, extras: ['noEars'] });
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.4, 10), toon(0x6a4a32)); post.position.y = 0.2; group.add(post);
+    return group;
   }
   setup() {
     const w = this.w;
-    for (const d of w.markers.D || []) {
-      const { group } = buildCharacter({ skin: 0xd8c8a8, build: 'muscle', hair: { style: 'none' }, eyes: { type: 'dots', color: 0x222222 }, mouth: 'flat', top: { type: 'shirt', color: 0xb83a3a }, bottom: { type: 'pants', color: 0x6a5a4a }, extras: ['noEars'] });
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.4, 8), toon(0x6a4a32)); post.position.y = 0.2; group.add(post);
-      w.addStructure({ team: 1, x: d.x, z: d.z, r: 0.45, hp: 6000, name: 'Trainingspuppe', mesh: group, regen: true, respawnable: true, dummy: true });
-    }
+    this.dummies = [];
+    for (const d of w.markers.D || []) this.dummies.push(w.addStructure({ team: 1, x: d.x, z: d.z, r: 0.45, hp: 6000, name: 'Trainingspuppe', mesh: this.dummyMesh(), regen: true, respawnable: true, dummy: true }));
     this.timeLeft = 99999;
+    this.log = []; this.total = 0; this.moving = null; this.bot = null;
+    this.buildPanel();
   }
+  buildPanel() {
+    const w = this.w, root = w.hud?.root; if (!root) return;
+    const p = w.player;
+    const mk = (cls, html) => { const d = document.createElement('div'); d.className = cls; d.innerHTML = html; root.appendChild(d); return d; };
+    this.dpsEl = mk('tr-dps', 'Schaden: 0 · DPS: 0');
+    const def = p.def;
+    const abil = mk('tr-abil', '');
+    this.abilEl = abil;
+    this.refreshAbil();
+    const panel = mk('tr-panel', `<button data-a="heal">♻ Puppen heilen</button><button data-a="form">✺ Form-Anzeige füllen</button><button data-a="super">★ Super laden</button><button data-a="move">⇄ Bewegliche Puppe</button><button data-a="bot">⚔ Gegner-Bot an/aus</button><button data-a="reset">⟲ Schadenszähler</button><button data-a="switch">👤 Kämpfer wechseln</button>`);
+    panel.addEventListener('pointerdown', (e) => {
+      const b = e.target.closest('button'); if (!b) return; e.stopPropagation();
+      const a = b.dataset.a, f = w.player;
+      if (a === 'heal') for (const d of this.dummies) { d.hp = d.maxHp; d.alive = true; d.mesh.visible = true; }
+      if (a === 'form') f.transCharge = 1;
+      if (a === 'super') { f.superCharge = 1; f.overCharge = 1; }
+      if (a === 'reset') { this.log = []; this.total = 0; }
+      if (a === 'move') this.toggleMoving();
+      if (a === 'bot') this.toggleBot();
+      if (a === 'switch') w.o.onTrainingSwitch && w.o.onTrainingSwitch();
+    });
+  }
+  refreshAbil() {
+    const f = this.w.player; if (!f || !this.abilEl) return;
+    const T = f.formDef;
+    this.abilEl.innerHTML = `<b>${f.def.name}</b>${T ? ` — <b style="color:#ff8a2a">${T.name}</b>` : ''}<br>
+      🗡 <b>Angriff</b> (Linksklick / roter Knopf): ${f.mainAct.name ?? ''}<br>
+      ★ <b>Super</b> (Rechtsklick / Leertaste): ${f.superAct.name ?? ''}<br>
+      ⚙ <b>Gadget</b> (E): ${f.gadgetAct?.name ?? '—'}<br>
+      ✺ <b>Form</b> (F): ${f.def.trans ? (f.transformed ? (f.canStage2 ? f.def.trans.next.name : 'aktiv') : f.def.trans.name) : '—'}`;
+    this.lastForm = f.form;
+  }
+  toggleMoving() {
+    const w = this.w;
+    if (this.moving) { this.moving.alive = false; w.scene.remove(this.moving.mesh); w.units.splice(w.units.indexOf(this.moving), 1); this.moving = null; return; }
+    const s = w.addStructure({ team: 1, x: 0, z: -2, r: 0.45, hp: 8000, name: 'Bewegliche Puppe', mesh: this.dummyMesh(0x3a6ab8), regen: true, respawnable: true, dummy: true });
+    s.t = 0; this.moving = s;
+  }
+  toggleBot() {
+    const w = this.w;
+    if (this.bot) { this.bot.alive = false; this.bot.dispose(); w.units.splice(w.units.indexOf(this.bot), 1); w.fighters.splice(w.fighters.indexOf(this.bot), 1); this.bot = null; return; }
+    const pool = ['yuji', 'naruto', 'ichigo', 'luffy', 'goku', 'zoro', 'sasuke'];
+    const id = pool[Math.floor(Math.random() * pool.length)];
+    const f = w.spawnFighter({ defId: id, team: 1, level: 7, name: 'Trainings-Bot' }, 0, -4);
+    f.brain = new (w.botBrainClass)(w, f, 0.45);
+    this.bot = f;
+  }
+  onDamage(src, tgt, amount) { if (src === this.w.player || src?.owner === this.w.player) { this.log.push([this.w.time, amount]); this.total += amount; } }
   update(dt) {
     super.update(dt);
     const p = this.w.player;
@@ -522,9 +576,17 @@ class TrainingMode extends Mode {
     if (!p.transformed || p.canStage2) p.transCharge = Math.min(1, p.transCharge + dt * 0.6);
     p.gadgets = 99;
     if (p.overdrive) p.overCharge = 1;
+    if (this.moving && this.moving.alive) { this.moving.t += dt; this.moving.x = Math.sin(this.moving.t * 0.9) * 4; this.moving.z = -2 + Math.sin(this.moving.t * 0.45) * 1.2; this.moving.mesh.position.set(this.moving.x, 0, this.moving.z); this.moving.mesh.rotation.y = Math.cos(this.moving.t * 0.9) > 0 ? Math.PI / 2 : -Math.PI / 2; }
+    if (this.bot && !this.bot.alive && this.bot.respawnT <= 0) this.bot.respawnT = 2;
+    const now = this.w.time;
+    this.log = this.log.filter(([t]) => now - t < 5);
+    const recent = this.log.reduce((s2, [, a]) => s2 + a, 0);
+    if (this.dpsEl) this.dpsEl.textContent = `Schaden gesamt: ${Math.round(this.total).toLocaleString('de-DE')} · DPS (5 s): ${Math.round(recent / 5).toLocaleString('de-DE')}`;
+    if (this.lastForm !== p.form) this.refreshAbil();
   }
-  respawnTime() { return 1; }
-  botGoal() { return null; }
+  respawnTime(f) { return f === this.bot ? 2 : 1; }
+  spawnPoint(f) { return f === this.bot ? { x: 0, z: -4 } : (this.w.markers['1']?.[0] ?? { x: 0, z: 5 }); }
+  botGoal(f) { const p = this.w.player; return p ? { x: p.x, z: p.z } : null; }
   hud() { return { center: 'TRAINING — Esc / ✕ zum Verlassen' }; }
 }
 

@@ -190,6 +190,7 @@ export class App {
       renderer: this.renderer, hud, input, mode: M, map: M.map, theme: pm.theme, lineups: pm.lineups, rules: pm.rules,
       difficulty: this.difficulty(), quality: Save.data.settings.quality, seed: Math.floor(Math.random() * 1000),
       onEnd: (res) => this.endMatch(res), onExit: () => this.exitMatch(),
+      onTrainingSwitch: () => this.trainingSwitch(),
       autoplay: DEBUG.autoplay,
     });
     hud.onPin = (i) => world.player && hud.pin(world.player, i);
@@ -198,6 +199,12 @@ export class App {
     this.aim = new AimIndicator(world.scene);
     this.transport.begin(world);
     music('battle');
+  }
+  trainingSwitch() {
+    const ids = ROSTER.map(c => c.id);
+    const m = this.modal(`<h2>Kämpfer wählen</h2><div class="pick-grid">${ids.map(id => `<button data-id="${id}"><img data-p="${id}" data-skin="default" data-form="base"><br>${BY_ID[id].name.split(' ').slice(-1)[0]}</button>`).join('')}</div>`, { wide: true });
+    m.el.querySelectorAll('img[data-p]').forEach(img => this.queuePortrait(img, img.dataset.p));
+    m.el.querySelectorAll('[data-id]').forEach(b => b.onclick = () => { m.close(); const from = this.pendingMatch?.from; this.teardownWorld(); this.startMatch('training', { brawler: b.dataset.id }); this.pendingMatch.from = from || 'lobby'; });
   }
   exitMatch() {
     if (!this.world) return;
@@ -262,6 +269,7 @@ export class App {
         this.world.update(dt);
         this.aim?.update(this.world, this.input, this.world.player);
         this.world.render();
+        if (this.modalRoot.children.length) this.processPortraits();
       } else {
         this.stage.update(dt);
         this.stage.render();

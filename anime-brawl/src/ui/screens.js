@@ -1,5 +1,6 @@
 // Menu screens. Each screen renders into app.ui and wires its own handlers.
 import { icon } from './icons.js';
+import { redeemCode } from '../core/save.js';
 import { Save, bData, owned, totalTrophies, upgrade, upgradeCost, canUpgrade, buyItem, grant, rewardLabel, buyBrawler, openOrb, leaderboard, unreadNotes, note, seeded, botName, MAX_LEVEL, UNLOCK, PRICES, TROPHY_ROAD, PASS, GEARS } from '../core/save.js';
 import { ROSTER, BY_ID, RARITIES, ANIME, skinsFor } from '../data/index.js';
 import { MODES, THEMES, MAPS } from '../data/maps.js';
@@ -33,6 +34,15 @@ function hydrate(app, root = app.ui) {
 function rarityTag(r) { const R = rar(r); return `<span class="rtag r-${r}" style="--rc:${R.color}">${R.name}</span>`; }
 
 // ---------------------------------------------------------------------------
+export function codeModal(app) {
+  const m = app.modal(`<h2>Code einlösen</h2><p>Gib deinen Code ein.</p><input class="inp code" inputmode="numeric" maxlength="16" placeholder="Code"><div class="row"><button class="btn ghost no">Abbrechen</button><button class="btn green yes">Einlösen</button></div>`);
+  const go = () => { const r = redeemCode(m.el.querySelector('.code').value); app.toast(r.text, r.ok ? 'gold' : ''); if (r.ok) { sfx('unlock'); m.close(); app.stage.celebrate(0xffd23f); app.show(app.screen); } };
+  m.el.querySelector('.yes').onclick = go;
+  m.el.querySelector('.code').onkeydown = (e) => { if (e.key === 'Enter') go(); };
+  m.el.querySelector('.no').onclick = () => m.close();
+  setTimeout(() => m.el.querySelector('.code').focus(), 50);
+}
+
 export function rewardsModal(app, list, title = 'Belohnungen') {
   const items = list.map((r, i) => { const L = rewardLabel(r); return `<div class="rw" style="animation-delay:${0.15 + i * 0.12}s"><div class="ri">${r.kind === 'brawler' ? pimg(app, r.id, 'default', 'base', 'rimg') : `<span>${L.icon}</span>`}</div><div class="rt">${L.text}${r.dupe ? ' <small>(Duplikat → Credits)</small>' : ''}</div></div>`; }).join('');
   const m = app.modal(`<h2>${title}</h2><div class="rwlist">${items}</div><button class="btn yellow ok">Super!</button>`, { cls: 'rewards' });
@@ -78,6 +88,7 @@ function lobby(app) {
       <div class="sp"></div>
       ${curBar()}
       <button class="icon-btn bell">${icon('bell')}${unread ? `<em class="badge">${unread}</em>` : ''}</button>
+      <button class="icon-btn codebtn" title="Code einlösen">${icon('gadget')}</button>
       <button class="icon-btn" data-go="settings">${icon('settings')}</button>
     </header>
     <nav class="side left">
@@ -101,6 +112,7 @@ function lobby(app) {
     <footer class="bottombar">
       <button class="brawler-chip" data-go="brawlers">${pimg(app, d.selected, b.skin)}<div><small>Kämpfer</small><b>${esc(def.name)}</b></div></button>
       <button class="mode-chip" data-go="events" style="--mc:${M.color}"><span class="mi">${M.icon}</span><div><small>${esc(theme.name)} · ${esc(MAPS[M.map]?.name ?? 'Wechselnd')}</small><b>${esc(M.name)}</b></div></button>
+      <button class="train-btn" title="Trainingsmodus">${icon('sword')}<span>Training</span></button>
       <button class="play-btn"><span>SPIELEN</span></button>
     </footer>
   </div>`;
@@ -111,6 +123,8 @@ function lobby(app) {
   tap.addEventListener('pointerdown', (e) => { down = { x: e.clientX, t: performance.now(), s: app.stage.spinTarget }; app.stage.drag = true; (() => { try { tap.setPointerCapture(e.pointerId); } catch {} })(); });
   tap.addEventListener('pointermove', (e) => { if (down) app.stage.spinTarget = down.s + (e.clientX - down.x) * 0.012; });
   tap.addEventListener('pointerup', (e) => { if (down && Math.abs(e.clientX - down.x) < 8) { app.stage.react(); sfx(def.sfx || 'punch'); } down = null; app.stage.drag = false; });
+  app.ui.querySelector('.codebtn').onclick = () => codeModal(app);
+  app.ui.querySelector('.train-btn').onclick = () => { app.startMatch('training', { brawler: d.selected }); app.pendingMatch.from = 'lobby'; };
   app.ui.querySelector('.play-btn').onclick = () => { if (!owned(d.selected)) { app.toast('Kämpfer nicht freigeschaltet'); return; } app.startMatch(d.mode); };
   app.ui.querySelector('.bell').onclick = () => {
     const m = app.modal(`<h2>Benachrichtigungen</h2><div class="notes">${d.notes.map(n => `<div class="note ${n.unread ? 'new' : ''}"><small>${new Date(n.t).toLocaleString('de-DE')}</small><p>${esc(n.text)}</p></div>`).join('') || '<p>Keine Nachrichten.</p>'}</div>`);
@@ -583,6 +597,7 @@ function settings(app) {
       <div class="setc"><h3>Audio</h3><label>Effekte <input type="range" min="0" max="1" step="0.05" value="${s.sfx}" class="rsfx"></label><label>Musik <input type="range" min="0" max="1" step="0.05" value="${s.music}" class="rmus"></label></div>
       <div class="setc"><h3>Grafik</h3><div class="chips">${[['high', 'Hoch'], ['medium', 'Mittel'], ['low', 'Niedrig (Akku)']].map(([k, n]) => `<button class="chip ${s.quality === k ? 'on' : ''}" data-q="${k}">${n}</button>`).join('')}</div><small>„Niedrig“ schaltet Schatten und Kantenglättung ab (Neustart der Seite empfohlen).</small></div>
       <div class="setc"><h3>Steuerung</h3><div class="keys"><span><kbd>W A S D</kbd> Bewegen</span><span><kbd>Maus</kbd> Zielen</span><span><kbd>Linksklick</kbd> Angriff</span><span><kbd>Rechtsklick</kbd>/<kbd>Leertaste</kbd> Super</span><span><kbd>E</kbd> Gadget</span><span><kbd>F</kbd>/<kbd>Q</kbd> Transformation</span><span><kbd>1–4</kbd> Pins</span><span><kbd>Esc</kbd> Match verlassen</span></div><small>Touch: linker Joystick bewegt; Angriff/Super ziehen zum Zielen, tippen für Auto-Aim.</small></div>
+      <div class="setc"><h3>Code einlösen</h3><p>Gib einen Code ein, um Belohnungen freizuschalten.</p><div class="row"><input class="inp codeinp" maxlength="16" placeholder="Code"><button class="btn green redeem">Einlösen</button></div></div>
       <div class="setc"><h3>Spielstand</h3><p>Dein Fortschritt wird lokal in diesem Browser gespeichert.</p><button class="btn red reset">Spielstand zurücksetzen</button></div>
       <div class="setc wide"><h3>Über dieses Projekt</h3><p><b>ANIME BRAWL – ULTIMATE CLASH</b> ist ein nicht-kommerzieller Fan-Prototyp. Alle Figuren gehören ihren jeweiligen Rechteinhabern (Jujutsu Kaisen, Dragon Ball, Naruto, Bleach, One Piece). Es werden keine Original-Assets, -Musik oder -Animationen verwendet: Modelle, Effekte, Sounds und Musik sind prozedural im Spiel erzeugt. Spielmodi und Systeme sind vom Genre der 3v3-Arena-Brawler inspiriert, Namen und Grafiken sind eigenständig.</p></div>
     </div></div>`;
@@ -590,6 +605,7 @@ function settings(app) {
   ui.querySelector('.rsfx').oninput = (e) => { s.sfx = +e.target.value; setVolumes(s.sfx, s.music); Save.save(); };
   ui.querySelector('.rmus').oninput = (e) => { s.music = +e.target.value; setVolumes(s.sfx, s.music); Save.save(); };
   ui.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { s.quality = b.dataset.q; Save.save(); app.applyQuality(); settings(app); });
+  ui.querySelector('.redeem').onclick = () => { const r = redeemCode(ui.querySelector('.codeinp').value); app.toast(r.text, r.ok ? 'gold' : ''); if (r.ok) { sfx('unlock'); settings(app); } };
   ui.querySelector('.reset').onclick = () => { const m = app.modal(`<h2>Wirklich zurücksetzen?</h2><p>Alle Kämpfer, Trophäen und Käufe gehen verloren.</p><div class="row"><button class="btn ghost no">Abbrechen</button><button class="btn red yes">Zurücksetzen</button></div>`); m.el.querySelector('.no').onclick = () => m.close(); m.el.querySelector('.yes').onclick = () => { Save.reset(); m.close(); app.setStageChar(); app.show('lobby'); }; };
   ui.querySelector('.back').onclick = () => app.show('lobby');
 }

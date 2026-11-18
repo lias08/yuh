@@ -24,6 +24,23 @@ npm run check:data # validates all 50 character kits
 **Desktop:** WASD to move · mouse to aim · left click to attack · right click / space for Super · E for gadget · F/Q to transform · 1–4 for pins · Esc to leave.
 **Touch:** left joystick to move · drag the attack/Super button to aim manually, tap it for auto-aim · gadget and FORM buttons.
 
+## Android APK
+
+A signed release APK is in `release/AnimeBrawl-UltimateClash-v1.0.apk` (≈3.9 MB, Android 7+ / API 24+, landscape, fullscreen, fully offline).
+Install it by copying it to your phone and opening it (allow "install from unknown sources").
+
+Build it yourself (needs JDK 21 and the Android SDK, `ANDROID_HOME` set):
+```bash
+npm run android:sync                      # vite build + copy into android/
+cd android && ./gradlew assembleRelease   # → android/app/build/outputs/apk/release/app-release.apk
+```
+For a signed build, create `android/keystore.properties` (storeFile, storePassword, keyAlias, keyPassword). Without it Gradle produces an unsigned APK. The keystore is deliberately not in the repository.
+
+## Codes & training
+
+- **Code `67`** (lobby → gadget icon in the top bar, or Settings → "Code einlösen"): unlocks all 50 fighters at level 11 with all gadgets, passive powers, gears, Overdrive and skins, plus unlimited coins, gems and credits, the premium pass and all cosmetics.
+- **Training** (blue "Training" button in the lobby or "Testen" on any fighter): dummies, a moving dummy, an optional fighting bot, a damage/DPS meter, buttons to fill Super and the form meter instantly, an ability overview, and switching to any of the 50 fighters on the spot.
+
 ## What's included
 
 | Area | Status |
@@ -49,8 +66,7 @@ npm run check:data # validates all 50 character kits
   a prepared `WebSocketTransport` for an authoritative server.
 - **Friends, clubs, club chat and leaderboards** are populated by generated bot players (labelled as such in-game).
 - **Real-money purchases are disabled.** Gems come from the trophy road, the pass, orbs and gifts.
-- Models are stylised, procedurally built chibi figures (smooth capsule/lathe forms, cel shading, ink
-  outlines, painted faces). There are no hand-sculpted or animated 3D assets. Animations are procedural.
+- Models are sculpted procedurally in code (signed-distance shapes merged into one continuous mesh, smooth normals, baked AO, skinned to a skeleton) and generated on device in web workers. They are not hand-modelled assets made by a 3D artist, and faces are painted textures. Animations are procedural.
 - There is one map layout per mode; variety comes from 5 visual themes.
 - No voice lines.
 

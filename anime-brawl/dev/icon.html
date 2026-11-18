@@ -1,0 +1,24 @@
+<!doctype html><html><head><style>
+html,body{margin:0;width:512px;height:512px;overflow:hidden;background:transparent}
+.bg{position:absolute;inset:0;background:radial-gradient(circle at 50% 35%,#7a5aff,#2a1868 70%,#140c38);}
+.ring{position:absolute;inset:18px;border-radius:50%;border:10px solid rgba(255,210,63,.85);box-shadow:0 0 40px #ffd23f}
+canvas{position:absolute;inset:0}
+.t{position:absolute;bottom:34px;left:0;right:0;text-align:center;font:400 78px 'Lilita One';color:#ffd23f;-webkit-text-stroke:6px #2a1458;paint-order:stroke fill;letter-spacing:2px}
+</style></head><body><div class="bg"></div><div class="ring"></div><script type="module">
+import '../src/fonts.css';
+import * as THREE from 'three';
+import { buildCharacter } from '../src/render/model.js';
+import { animate } from '../src/render/anim.js';
+import { ROSTER } from '../src/data/index.js';
+import { lookFor } from '../src/game/fighter.js';
+const r = new THREE.WebGLRenderer({ antialias: true, alpha: true }); r.setSize(512, 512); r.setClearColor(0, 0); r.outputColorSpace = THREE.SRGBColorSpace; document.body.appendChild(r.domElement);
+const s = new THREE.Scene();
+s.add(new THREE.HemisphereLight(0xffffff, 0x6a5aaa, 1.4)); const d = new THREE.DirectionalLight(0xffffff, 2.2); d.position.set(2, 3, 4); s.add(d); const rim = new THREE.DirectionalLight(0x8ad8ff, 2); rim.position.set(-3, 2, -2); s.add(rim);
+const def = ROSTER.find(c => c.id === 'gojo');
+const { group, rig } = buildCharacter(lookFor(def, null, 'trans'), { quality: 'hi', outline: 0.02 });
+animate(rig, 0.016, { move: 0 }); group.rotation.y = 0.25; s.add(group);
+const cam = new THREE.PerspectiveCamera(24, 1, 0.1, 50); const h = rig.height; cam.position.set(0.15, h * 0.86, h * 2.25); cam.lookAt(0, h * 0.8, 0);
+r.render(s, cam);
+const t = document.createElement('div'); t.className = 't'; t.textContent = 'BRAWL'; document.body.appendChild(t);
+await document.fonts.ready; window.__done = true;
+</script></body></html>

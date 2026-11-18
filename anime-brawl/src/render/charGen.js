@@ -401,7 +401,7 @@ export function generate(look, quality = 1) {
       const bt = sk.bones[pt.bone];
       const Pp = m.position, n = Pp.length / 3, tmp = { position: new Float32Array(Pp.length), normal: m.normal };
       for (let v = 0; v < n; v++) { const w = add3(bt.T, mApply(bt.R, [Pp[v * 3], Pp[v * 3 + 1], Pp[v * 3 + 2]])); tmp.position.set(w, v * 3); }
-      bakeAO(tmp, occ, pt.name === 'head' || pt.name === 'hair' ? 0.4 : 0.7);
+      bakeAO(tmp, occ, pt.name === 'head' ? 0 : pt.name === 'hair' ? 0.35 : 0.6);
       m.color = tmp.color;
     }
   }

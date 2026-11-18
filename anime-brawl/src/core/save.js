@@ -50,7 +50,10 @@ export const Save = {
     this.checkSeason();
     return this.data;
   },
-  save() { try { localStorage.setItem(KEY, JSON.stringify(this.data)); } catch { /* storage may be unavailable (private mode) */ } },
+  save() {
+    if (this.data.infinite) { this.data.coins = this.data.gems = this.data.credits = 999999999; }
+    try { localStorage.setItem(KEY, JSON.stringify(this.data)); } catch { /* storage may be unavailable (private mode) */ }
+  },
   reset() { try { localStorage.removeItem(KEY); } catch {} this.data = defaults(); this.refreshDaily(); this.save(); },
   /** Season end: trophies above 500 per brawler are halved (like the genre), rewards in coins. */
   checkSeason() {
@@ -69,6 +72,29 @@ export const Save = {
     if (d.shop.day !== day) { d.shop = { day, offers: genOffers(day), bought: [] }; }
   },
 };
+
+// ---- codes ------------------------------------------------------------------------
+/** Code 67: unlocks everything and gives unlimited currencies. */
+export function redeemCode(code) {
+  const c = String(code).trim();
+  const d = Save.data;
+  if (c !== '67') return { ok: false, text: 'Ungültiger Code' };
+  for (const ch of ROSTER) {
+    const b = d.brawlers[ch.id] || (d.brawlers[ch.id] = newBrawler());
+    b.level = MAX_LEVEL; b.pp = Math.max(b.pp, 9999);
+    b.gadgets = [0, 1]; b.sps = [0, 1]; b.gears = GEARS.map((_, i) => i); b.overdrive = true;
+    if (b.gadget < 0) b.gadget = 0; if (b.sp < 0) b.sp = 0; if (!b.gear.length) b.gear = [0, 1];
+    b.skins = skinsFor(ch).map(s => s.id);
+  }
+  d.infinite = true;
+  d.coins = d.gems = d.credits = 999999999;
+  d.pass.premium = true; d.pass.xp = Math.max(d.pass.xp, PASS.tiers * PASS.xpPerTier);
+  d.cos.pins = PINS.map(p => p.id); d.cos.sprays = SPRAYS.map(p => p.id); d.cos.titles = Object.keys(TITLES); d.cos.effects = EFFECTS.map(p => p.id);
+  d.cos.emotes = ['laugh', 'flex', 'bow'];
+  note('Code 67 eingelöst: Alles freigeschaltet, unendlich Münzen, Juwelen und Credits!');
+  Save.save();
+  return { ok: true, text: 'Alles freigeschaltet! Unendlich Münzen, Juwelen & Credits.' };
+}
 
 // ---- helpers ----------------------------------------------------------------
 export const owned = (id) => !!Save.data.brawlers[id];
