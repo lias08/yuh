@@ -25,7 +25,36 @@ static func all() -> Array:
 	list.append_array(RosterData.all())
 	for b in list:
 		_balance(b)
+		_add_inspiration(b)
 	return list
+
+# ------------------------------------------------------------------ Anime-Inspiration (Info für Spieler)
+# Brawler mit Stern: Fähigkeiten-Konzepte sind von Animes inspiriert (eigene Umsetzung).
+static func _add_inspiration(b: Dictionary) -> void:
+	var by_name := {
+		"Klingengeist": ["Bleach", "Ichigo Kurosaki", "Formen-Entwicklung wie Shikai/Bankai, Klingenwelle, Masken-Form (Hollow), finale Form"],
+		"Varg": ["Jujutsu Kaisen", "Toji Fushiguro", "Waffenarsenal mit schnellem Waffenwechsel, jede Waffe mit eigenem Moveset"],
+		"Aurion": ["JoJo's Bizarre Adventure (Teil 5)", "Giorno Giovanna – Gold Experience Requiem", "Stand-Konzept; Ulti angelehnt an „Return to Zero“ (Handlungen der Gegner werden zurückgesetzt)"],
+		"Kalamis": ["JoJo's Bizarre Adventure (Teil 8)", "Tōru – Wonder of U", "Stand-Konzept; Ulti angelehnt an „Calamity“ (wer ihn verfolgt, wird vom Unglück getroffen)"],
+		"Kairo": ["Dragon Ball", "Son Goku", "Kampfkunst-Kombos, Energiekugeln, Power-Up-Verwandlung mit Aura, großer Energiestrahl"],
+		"Nyxara": ["Jujutsu Kaisen", "Satoru Gojo", "Raum-Manipulation (Heranziehen), Domain Expansion als Ulti"],
+		"Grimmzahn": ["Jujutsu Kaisen / JoJo's Bizarre Adventure", "Ryomen Sukuna / Stand-Nutzer", "schnelle Schnittwellen (wie Dismantle/Cleave), Kampfgeist als Stand"],
+		"Zirr": ["Hunter x Hunter", "Killua Zoldyck", "Blitz-Nen, extreme Geschwindigkeit (wie Godspeed), Blitzangriffe zwischen Gegnern"],
+	}
+	if by_name.has(b.name):
+		var e: Array = by_name[b.name]
+		b["inspired"] = {"anime": e[0], "character": e[1], "abilities": e[2]}
+		return
+	var sup_type: String = b.forms[0].super.get("type", "")
+	if b.has("stand_spirit"):
+		b["inspired"] = {"anime": "JoJo's Bizarre Adventure", "character": "Stand-Nutzer (z. B. Jotaro Kujo mit Star Platinum)",
+			"abilities": "Stand ein-/ausfahren mit eigenem Moveset, Schlaghagel des Geistes (wie „Ora-Ora“-Rush)"}
+	elif sup_type == "awaken":
+		var who := "Tōshirō Hitsugaya" if b.name == "Kaiser Frost" else "Bankai-Nutzer (z. B. Ichigo, Byakuya)"
+		b["inspired"] = {"anime": "Bleach", "character": who, "abilities": "Bankai-Konzept: Freisetzung der wahren Form mit neuem Aussehen, stärkeren Angriffen und neuer Ulti"}
+	elif sup_type == "domain":
+		b["inspired"] = {"anime": "Jujutsu Kaisen", "character": "Domain-Nutzer (z. B. Satoru Gojo, Ryomen Sukuna)",
+			"abilities": "Domain Expansion: eine Barriere, die Gegner einsperrt und in der der Besitzer stärker ist"}
 
 # ------------------------------------------------------------------ Balance
 # Alle Brawler einer Seltenheit sind gleich stark: Angriff pro Munition, Super-Wert und Leben werden

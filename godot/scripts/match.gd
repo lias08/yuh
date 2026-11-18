@@ -2276,22 +2276,31 @@ func _update_aim() -> void:
 	var sm := aim_mesh.material_override as ShaderMaterial
 	var spec: Dictionary = form.super if is_super else form.get("attack", {"type": "melee"})
 	var kind: String = spec.get("type", "wave" if is_super else "melee")
+	if not is_super and form.has("combo") and not form.has("attack"):
+		kind = "melee"
+	var srange: float = super_range(player) if is_super else spec.get("range", 3.0)
+	# Fähigkeiten rund um den Brawler: Kreis statt Richtungsanzeige
+	if kind in ["spin", "slam", "buff", "orbit", "awaken", "domain", "spirit", "rewind", "doom"] or (kind == "zone" and spec.get("range", 1.0) <= 0.5):
+		aim_mesh.mesh = _sector_mesh(max(1.5, spec.get("radius", 2.5)), 359.9)
+		sm.set_shader_parameter("color", Color(1, 0.85, 0.15, 0.45) if is_super else Color(1, 1, 1, 0.45))
+		return
 	var joy: JoyDraw = sup_joy if is_super else atk_joy
 	var frac: float = clamp(v.length() / (joy.radius * 0.8), 0.25, 1.0)
 	match kind:
 		"melee":
 			var st: Dictionary = form.combo[0]
 			aim_mesh.mesh = _sector_mesh(st.range, st.arc)
-		"lob":
-			aim_mesh.mesh = _sector_mesh(spec.range * frac + spec.radius, 2.0 * rad_to_deg(atan2(spec.radius, max(0.5, spec.range * frac))), spec.range * frac - spec.radius)
+		"lob", "meteor", "zone", "leap":
+			var rad: float = spec.get("radius", 1.5)
+			aim_mesh.mesh = _sector_mesh(srange * frac + rad, 2.0 * rad_to_deg(atan2(rad, max(0.5, srange * frac))), max(0.0, srange * frac - rad))
 		"nova":
-			aim_mesh.mesh = _sector_mesh(spec.range, 359.9)
+			aim_mesh.mesh = _sector_mesh(srange, 359.9)
 		"shot":
-			aim_mesh.mesh = _sector_mesh(spec.range, max(6.0, spec.get("spread", 0.0) + 6.0))
-		"dash":
-			aim_mesh.mesh = _sector_mesh(spec.range, 10.0)
+			aim_mesh.mesh = _sector_mesh(srange, clamp(spec.get("spread", 0.0) + 6.0, 6.0, 359.9))
+		"dash", "blink":
+			aim_mesh.mesh = _sector_mesh(srange, 10.0)
 		_:
-			aim_mesh.mesh = _sector_mesh(spec.range, 8.0 + spec.get("width", 0.5) * 6.0)
+			aim_mesh.mesh = _sector_mesh(srange, 8.0 + spec.get("width", 0.5) * 6.0)
 	sm.set_shader_parameter("color", Color(1, 0.85, 0.15, 0.45) if is_super else Color(1, 1, 1, 0.45))
 
 # ==================================================================== HUD & Touch
@@ -2439,7 +2448,7 @@ func _release(t: Dictionary) -> void:
 		"gadget":
 			player.try_gadget()
 		"super":
-			var sr: float = player.form().super.range
+			var sr: float = super_range(player)
 			_aim_frac = _auto_frac(sr) if tap else clamp(v.length() / (sup_joy.radius * 0.8), 0.25, 1.0)
 			player.try_super(auto_aim(14.0) if tap else Vector3(v.x, 0, v.y).normalized())
 

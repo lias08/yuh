@@ -213,6 +213,23 @@ func _render_portraits() -> void:
 		_portrait_wait.erase(key)
 	_portrait_busy = false
 
+## Stern-Markierung für Anime-inspirierte Brawler.
+class StarIcon extends Control:
+	func _draw() -> void:
+		var c := size / 2.0
+		var r1 := size.x * 0.5
+		var r2 := size.x * 0.22
+		var pts := PackedVector2Array()
+		for i in 10:
+			var a := -PI / 2.0 + i * PI / 5.0
+			var r := r1 if i % 2 == 0 else r2
+			pts.append(c + Vector2(cos(a), sin(a)) * r)
+		draw_colored_polygon(pts, Color(0.12, 0.06, 0.2))
+		var inner := PackedVector2Array()
+		for p in pts:
+			inner.append(c + (p - c) * 0.78)
+		draw_colored_polygon(inner, Color(1.0, 0.85, 0.2))
+
 ## Kleiner Pokal (gezeichnet, damit kein Emoji-Font nötig ist).
 class TrophyIcon extends Control:
 	func _draw() -> void:
@@ -551,11 +568,17 @@ func _brawler_card(b: Dictionary) -> Control:
 		lock.position = Vector2(10, 10)
 		lock.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		card.add_child(lock)
+	if b.has("inspired"):
+		var star := StarIcon.new()
+		star.size = Vector2(30, 30)
+		star.position = Vector2(154, 150)
+		star.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card.add_child(star)
 	var id: String = b.id
-	card.pressed.connect(func(): show_detail(id))
+	card.pressed.connect(func(): show_detail(id, "-", true))
 	return card
 
-func show_detail(id: String, preview_skin := "-") -> void:
+func show_detail(id: String, preview_skin := "-", from_list := false) -> void:
 	_clear()
 	screen.set_meta("detail", id)
 	screen.set_meta("skin", preview_skin)
@@ -571,6 +594,8 @@ func show_detail(id: String, preview_skin := "-") -> void:
 		var fl: String = String(b.forms[i].name).replace("Waffe: ", "") if b.get("weapon_swap", false) else "Form %d" % (i + 1)
 		if b.forms[0].super.get("type", "") == "awaken":
 			fl = "Normal" if i == 0 else "Erwacht"
+		elif b.has("stand_spirit"):
+			fl = "Ohne Geist" if i == 0 else "Mit Geist"
 		var fb := Game.make_button(fl, Color(1, 0.75, 0.2) if i == stage_form else Color(0.35, 0.35, 0.5), Vector2(118, 80), 18 if fl.length() > 8 else 22)
 		var idx: int = i
 		fb.pressed.connect(func():
@@ -648,6 +673,8 @@ func show_detail(id: String, preview_skin := "-") -> void:
 	var evo_text := "Die Super lädt sich durch Schaden an Gegnern auf."
 	if b.get("weapon_swap", false):
 		evo_text += " Gadget „%s“: wechselt jederzeit die Waffe (unbegrenzt, 3 s Abklingzeit)." % b.gadget.name
+	elif b.has("stand_spirit"):
+		evo_text += " Gadget „Geist rufen“: fährt den Geist aus oder ein (unbegrenzt, 1,5 s) – mit Geist gibt es einen anderen Angriff und eine andere Ulti."
 	elif b.forms[0].super.get("type", "") == "awaken":
 		evo_text += " Die Super lässt ihn %d s lang erwachen – mit eigenem Angriff und eigener Super." % int(b.forms[0].super.get("dur", 10.0))
 	elif b.forms.size() > 1:
@@ -658,6 +685,19 @@ func show_detail(id: String, preview_skin := "-") -> void:
 	vb.add_child(evo)
 
 	_skin_row(vb, b, unlocked)
+	if b.has("inspired"):
+		var star := StarIcon.new()
+		star.size = Vector2(44, 44)
+		star.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var star_btn := Button.new()
+		star_btn.flat = true
+		star_btn.custom_minimum_size = Vector2(50, 50)
+		star_btn.add_child(star)
+		star.position = Vector2(3, 3)
+		star_btn.pressed.connect(func(): _inspiration_toast(b))
+		_place(star_btn, Vector2(0, 0), Vector2(30 + 24 * b.name.length() + 230, 30))
+		if from_list:
+			_inspiration_toast(b)
 
 	if unlocked:
 		var selected: bool = Game.data.selected == id
@@ -670,6 +710,35 @@ func show_detail(id: String, preview_skin := "-") -> void:
 	else:
 		var l := Game.make_label("Gesperrt – nur mit Glück aus Boxen!", 28, Color(1, 0.85, 0.3), 8)
 		_place(l, Vector2(1, 1), Vector2(-560, -100))
+
+## Kurzes Popup: welche Anime-Fähigkeiten, aus welchem Anime, von welchem Charakter.
+func _inspiration_toast(b: Dictionary) -> void:
+	var ins: Dictionary = b.inspired
+	var layer := CanvasLayer.new()
+	layer.layer = 28
+	add_child(layer)
+	var panel := Game.make_panel(Color(0.22, 0.12, 0.42))
+	panel.custom_minimum_size = Vector2(760, 0)
+	layer.add_child(panel)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 6)
+	panel.add_child(vb)
+	var t := Game.make_label("★ Anime-inspiriert: " + b.name, 28, Color(1, 0.85, 0.3), 8)
+	vb.add_child(t)
+	for line in [["Anime", ins.anime], ["Charakter", ins.character], ["Fähigkeiten", ins.abilities]]:
+		var l := Game.make_label("%s: %s" % line, 21, Color.WHITE, 5)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size = Vector2(720, 0)
+		vb.add_child(l)
+	panel.position = Vector2((1280 - 790) / 2.0, -260)
+	var tw := panel.create_tween()
+	tw.tween_property(panel, "position:y", 110.0, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(4.0)
+	tw.tween_property(panel, "modulate:a", 0.0, 0.4)
+	tw.tween_callback(layer.queue_free)
+	panel.gui_input.connect(func(ev):
+		if ev is InputEventMouseButton and ev.pressed:
+			layer.queue_free())
 
 # ==================================================================== Skins (Detailseite)
 func _skin_row(vb: VBoxContainer, b: Dictionary, unlocked: bool) -> void:

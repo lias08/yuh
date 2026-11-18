@@ -43,7 +43,8 @@ const ABILITY_TYPES := ["beam", "zone", "turret", "orbit", "mine", "spin", "leap
 	"awaken", "domain", "spirit", "rewind", "doom"]
 var position_history: Array = []   # Positionen der letzten ~3 s (für Zeitrücklauf)
 var _hist_t := 0.0
-var awaken_until := 0.0   # Erwachen: Zeitpunkt, an dem die erwachte Form endet
+var awaken_until := 0.0
+var no_charge_until := 0.0   # Schaden der eigenen Super lädt die Super nicht wieder auf   # Erwachen: Zeitpunkt, an dem die erwachte Form endet
 
 var level := 1
 
@@ -252,6 +253,8 @@ func try_super(dir: Vector3) -> bool:
 		return false
 	super_charge = 0.0
 	super_uses += 1
+	var st: String = form().super.get("type", "wave")
+	no_charge_until = _time + (form().super.get("dur", 0.6) if st in ["zone", "domain", "doom", "turret", "orbit", "spin", "meteor"] else 0.8)
 	if arena.has_method("voice"):
 		arena.voice(self, "super")
 	_last_action = _time
@@ -292,6 +295,8 @@ func try_super(dir: Vector3) -> bool:
 
 ## Super-Aufladung durch Schaden an Gegnern (wie im Vorbild: X volle Kombos = 1 Super).
 func add_charge(damage: float) -> void:
+	if _time < no_charge_until:
+		return
 	var per_use: float = attack_damage(form())
 	var was_ready := super_charge >= 1.0
 	super_charge = min(1.0, super_charge + damage / (per_use * def.charge_hits))
