@@ -392,7 +392,7 @@ func nearest_enemy(f: Fighter):
 func super_range(f: Fighter) -> float:
 	var s: Dictionary = f.form().super
 	# Fähigkeiten rund um den Brawler: Bots setzen sie ein, wenn Gegner nah sind
-	if s.get("type", "") in ["spin", "slam", "buff", "orbit"] or (s.get("type", "") == "zone" and s.get("range", 1.0) <= 0.5):
+	if s.get("type", "") in ["spin", "slam", "buff", "orbit", "awaken", "domain", "spirit"] or (s.get("type", "") == "zone" and s.get("range", 1.0) <= 0.5):
 		return s.get("radius", 2.5) + 1.5
 	return s.get("range", 8.0)
 
@@ -885,6 +885,9 @@ func ability(f: Fighter, s: Dictionary, dir: Vector3, is_super: bool) -> void:
 		"buff": _apply_buff(f, s)
 		"meteor": _meteor(f, s, dir)
 		"barrier": _barrier(f, s, dir)
+		"awaken": _awaken(f, s)
+		"domain": _domain(f, s)
+		"spirit": _summon_spirit(f, s)
 		"fan":
 			var n: int = int(s.get("count", 3))
 			var spread: float = s.get("spread", 30.0)
@@ -956,7 +959,7 @@ func _beam_fx(a: Vector3, b: Vector3, color: Color, width: float, dur: float) ->
 	fx.append({"node": mi, "t": 0.0, "dur": dur, "kind": "beam", "w": width})
 
 ## Bodenzone: Schaden pro Sekunde, Verlangsamen, Sog zur Mitte, Heilung für das eigene Team.
-func spawn_zone(f: Fighter, pos: Vector3, z: Dictionary, color: Color) -> void:
+func spawn_zone(f: Fighter, pos: Vector3, z: Dictionary, color: Color) -> Dictionary:
 	var mi := MeshInstance3D.new()
 	mi.mesh = _sector_mesh(1.0, 359.9, 0.0)
 	mi.material_override = _fx_mat(Color(color.r, color.g, color.b, 0.28))
@@ -968,10 +971,12 @@ func spawn_zone(f: Fighter, pos: Vector3, z: Dictionary, color: Color) -> void:
 	edge.material_override = _fx_mat(Color(color.r, color.g, color.b, 0.7))
 	edge.position = Vector3(0, 0.01, 0)
 	mi.add_child(edge)
-	zones.append({"node": mi, "pos": pos, "radius": z.radius, "t": 0.0, "dur": z.get("dur", 3.0), "dps": z.get("dps", 0.0),
+	var entry := {"node": mi, "pos": pos, "radius": z.radius, "t": 0.0, "dur": z.get("dur", 3.0), "dps": z.get("dps", 0.0),
 		"slow": z.get("slow", 0.0), "pull": z.get("pull", 0.0), "heal": z.get("heal", 0.0), "stun": z.get("stun", 0.0),
-		"owner": f, "color": color, "tick": 0.0})
+		"owner": f, "color": color, "tick": 0.0, "trap": [], "extra": []}
+	zones.append(entry)
 	_ring_fx(pos, z.radius, color, 0.35)
+	return entry
 
 func _update_zones(delta: float) -> void:
 	for i in range(zones.size() - 1, -1, -1):
@@ -980,6 +985,12 @@ func _update_zones(delta: float) -> void:
 		z.tick -= delta
 		var owner_f: Fighter = z.owner if is_instance_valid(z.owner) else null
 		(z.node as Node3D).rotate_y(delta * (3.0 if z.pull > 0.0 else 0.6))
+		# Reich: eingeschlossene Gegner können die Kuppel nicht verlassen
+		for d in z.trap:
+			var out: Vector3 = d.pos - z.pos
+			out.y = 0
+			if out.length() > z.radius - 0.6:
+				_push(d, -out.normalized() * (out.length() - (z.radius - 0.8)))
 		if z.pull > 0.0 and owner_f != null:
 			for d in _targets(owner_f):
 				var to: Vector3 = z.pos - d.pos
@@ -1002,6 +1013,9 @@ func _update_zones(delta: float) -> void:
 							_damage_number(o.position + Vector3(0, 2.6, 0), o.max_hp * z.heal * 0.5, Color(0.4, 1.0, 0.5))
 			_burst(z.pos + Vector3(0, 0.3, 0), z.color, 6, -2.0 if z.pull > 0.0 else 1.5, 0.18)
 		if z.t >= z.dur:
+			for n in z.extra:
+				if is_instance_valid(n):
+					n.queue_free()
 			z.node.queue_free()
 			zones.remove_at(i)
 
@@ -1325,6 +1339,7 @@ func _update_abilities(delta: float) -> void:
 	_update_mines(delta)
 	_update_spins(delta)
 	_update_leaps(delta)
+	_update_spirits(delta)
 	for f in fighters:
 		if f.alive:
 			f.visible = not f.invisible() or f.team == player.team
@@ -1332,6 +1347,118 @@ func _update_abilities(delta: float) -> void:
 				aura_particle(f.position + Vector3(randf_range(-0.4, 0.4), randf_range(0.2, 1.6), randf_range(-0.4, 0.4)), Color(0.8, 0.8, 1.0))
 			elif f.buff_until > f.now() and randf() < 0.3:
 				aura_particle(f.position + Vector3(randf_range(-0.4, 0.4), randf_range(0.2, 1.6), randf_range(-0.4, 0.4)), f.buff_color)
+
+# ==================================================================== Anime-Mechaniken
+## Erwachen: Verwandlung in die erwachte Form (neues Aussehen, stärkerer Angriff, eigene Super) für einige Sekunden.
+func _awaken(f: Fighter, s: Dictionary) -> void:
+	if f.def.forms.size() < 2:
+		return
+	f.apply_form(1, true)
+	f.awaken_until = f.now() + s.get("dur", 10.0)
+	_explode(f.position, s.get("radius", 3.0), s.get("dmg", 800.0), s.color, f, fx_of(s), false)
+	for k in 3:
+		get_tree().create_timer(k * 0.12, false).timeout.connect(func():
+			_ring_fx(f.position, 2.0 + k * 1.4, s.color, 0.5)
+			_burst(f.position + Vector3(0, 1.0, 0), s.color, 30, 7.0, 0.25))
+	_shake = 0.7
+	Game.play_sfx("transform", 1.0, 0.9)
+
+## Reich: eine Kuppel um den Brawler. Gegner darin sind gefangen, nehmen Schaden und Effekte,
+## der Besitzer ist darin stärker.
+func _domain(f: Fighter, s: Dictionary) -> void:
+	var z: Dictionary = spawn_zone(f, f.position, s, s.color)
+	for d in _targets(f):
+		if (d.pos - f.position).length() <= s.radius:
+			z.trap.append(d)
+	var dome := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 1.0; sm.height = 2.0; sm.is_hemisphere = true; sm.radial_segments = 40; sm.rings = 12
+	dome.mesh = sm
+	var m := _fx_mat(Color(s.color.r, s.color.g, s.color.b, 0.16))
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	dome.material_override = m
+	dome.position = f.position
+	dome.scale = Vector3.ONE * 0.2
+	add_child(dome)
+	dome.create_tween().tween_property(dome, "scale", Vector3(s.radius, s.radius * 0.75, s.radius), 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	z.extra.append(dome)
+	# Besitzer-Verstärkung im Reich
+	var buff := {"type": "buff", "dur": s.get("dur", 6.0), "color": s.color, "dmg_mult": s.get("dmg_mult", 1.3)}
+	if s.get("lifesteal", 0.0) > 0.0:
+		buff["lifesteal"] = s.lifesteal
+	if s.get("speed", false):
+		buff["speed"] = true
+	_apply_buff(f, buff)
+	_shake = 0.6
+	Game.play_sfx("transform", 1.0, 0.7)
+
+## Geistwächter: ein Kampfgeist erscheint neben dem Brawler und schlägt Gegner mit Schlaghagel.
+var spirits: Array = []
+
+func _summon_spirit(f: Fighter, s: Dictionary) -> void:
+	var c: Color = s.get("spirit_color", s.color)
+	var look: Dictionary = f.form().look.duplicate(true)
+	look.merge({"robe": c.darkened(0.25), "trim": Color(1, 1, 1), "skin": c.lightened(0.35), "hair": c.lightened(0.15),
+		"face": s.get("spirit_face", "visor"), "weapon": "fists", "eye": Color(1, 1, 1), "blade": c.lightened(0.3),
+		"cape": false, "size": look.get("size", 1.0) * 1.15, "body": "buff"}, true)
+	look["acc"] = s.get("spirit_acc", ["pauldrons"])
+	look["armor_color"] = c.lightened(0.2)
+	if s.has("spirit_hair"):
+		look["hair_style"] = s.spirit_hair
+	var rig := ModelBuilder.build(look)
+	add_child(rig.root)
+	rig.root.position = f.position + Vector3(0.9, 0.4, 0.6)
+	spirits.append({"owner": f, "rig": rig, "t": 0.0, "dur": s.get("dur", 7.0), "cd": 0.0, "interval": s.get("interval", 0.14),
+		"dmg": s.dmg, "reach": s.get("reach", 2.6), "fx": fx_of(s), "color": c, "punch": 0})
+	_burst(rig.root.position + Vector3(0, 1.0, 0), c, 40, 6.0, 0.25)
+	_ring_fx(f.position, 2.5, c, 0.4)
+	Game.play_sfx("transform", 0.9, 1.3)
+
+func _update_spirits(delta: float) -> void:
+	for i in range(spirits.size() - 1, -1, -1):
+		var sp: Dictionary = spirits[i]
+		sp.t += delta
+		sp.cd -= delta
+		var f: Fighter = sp.owner if is_instance_valid(sp.owner) else null
+		var root: Node3D = sp.rig.root
+		if f == null or not f.alive or sp.t >= sp.dur:
+			_burst(root.position + Vector3(0, 1.0, 0), sp.color, 30, 4.0, 0.2)
+			root.queue_free()
+			spirits.remove_at(i)
+			continue
+		# Ziel in Reichweite des Geistes suchen
+		var target = null
+		var bd: float = sp.reach + 1.5
+		for d in _targets(f):
+			var dist: float = (d.pos - f.position).length()
+			if dist < bd:
+				bd = dist; target = d
+		var home: Vector3 = f.position + f.aim_dir.rotated(Vector3.UP, 2.2) * 0.9 + Vector3(0, 0.4 + sin(sp.t * 3.0) * 0.12, 0)
+		var want: Vector3 = home
+		if target != null:
+			var to: Vector3 = target.pos - f.position
+			to.y = 0
+			want = target.pos - to.normalized() * 1.1 + Vector3(0, 0.4, 0)
+			root.rotation.y = lerp_angle(root.rotation.y, atan2(-to.x, -to.z), 1.0 - exp(-delta * 15.0))
+		else:
+			root.rotation.y = lerp_angle(root.rotation.y, atan2(-f.aim_dir.x, -f.aim_dir.z), 1.0 - exp(-delta * 10.0))
+		root.position = root.position.lerp(want, 1.0 - exp(-delta * 9.0))
+		var rig: Dictionary = sp.rig
+		if target != null and sp.cd <= 0.0 and (target.pos - root.position).length() < sp.reach:
+			sp.cd = sp.interval
+			sp.punch += 1
+			_damage_dummy(target, sp.dmg, f, sp.fx, root.position)
+			_burst(target.pos + Vector3(randf_range(-0.3, 0.3), 1.0 + randf_range(-0.3, 0.3), randf_range(-0.3, 0.3)), sp.color, 5, 3.0, 0.12)
+			if sp.punch % 3 == 0:
+				Game.play_sfx("hit", 0.35, 1.3 + randf() * 0.3)
+			var hand: Node3D = rig.hand_r if sp.punch % 2 == 0 else rig.hand_l
+			hand.position = Vector3(0.25 * (1 if sp.punch % 2 == 0 else -1), 0.95, -0.75)
+		for h in [rig.hand_l, rig.hand_r]:
+			var rest := Vector3(0.5 * (1 if h == rig.hand_r else -1), 0.7, -0.15)
+			(h as Node3D).position = (h as Node3D).position.lerp(rest, 1.0 - exp(-delta * 18.0))
+		ModelBuilder.update_limbs(rig)
+		if randf() < 0.4:
+			aura_particle(root.position + Vector3(randf_range(-0.5, 0.5), randf_range(0.3, 1.8), randf_range(-0.5, 0.5)), sp.color)
 
 # ==================================================================== Voicelines
 ## Brawler sagt etwas: Sprechblase über dem Kopf + (falls vorhanden) eigene Audiodatei.

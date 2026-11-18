@@ -565,6 +565,8 @@ func show_detail(id: String, preview_skin := "-") -> void:
 	_place(forms, Vector2(0, 1), Vector2(30, -120))
 	for i in (b.forms.size() if b.forms.size() > 1 else 0):
 		var fl: String = String(b.forms[i].name).replace("Waffe: ", "") if b.get("weapon_swap", false) else "Form %d" % (i + 1)
+		if b.forms[0].super.get("type", "") == "awaken":
+			fl = "Normal" if i == 0 else "Erwacht"
 		var fb := Game.make_button(fl, Color(1, 0.75, 0.2) if i == stage_form else Color(0.35, 0.35, 0.5), Vector2(118, 80), 18 if fl.length() > 8 else 22)
 		var idx: int = i
 		fb.pressed.connect(func():
@@ -615,6 +617,8 @@ func show_detail(id: String, preview_skin := "-") -> void:
 	var evo_text := "Die Super lädt sich durch Schaden an Gegnern auf."
 	if b.get("weapon_swap", false):
 		evo_text += " Gadget „%s“: wechselt jederzeit die Waffe (unbegrenzt, 3 s Abklingzeit)." % b.gadget.name
+	elif b.forms[0].super.get("type", "") == "awaken":
+		evo_text += " Die Super lässt ihn %d s lang erwachen – mit eigenem Angriff und eigener Super." % int(b.forms[0].super.get("dur", 10.0))
 	elif b.forms.size() > 1:
 		evo_text += " Jede Super schaltet bis Matchende die nächste Form frei."
 	var evo := Game.make_label(evo_text, 18, Color(0.8, 0.8, 0.9), 4)

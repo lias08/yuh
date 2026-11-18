@@ -222,7 +222,12 @@ static func build(row: Array) -> Dictionary:
 		"kosmos": dm *= 1.03
 		"klang": sfx["stun"] = 0.4
 	hp = round(hp / 50.0) * 50.0
-	var kit: Array = KITS()[name]
+	var kit: Array = KITS()[name].duplicate()
+	var anime: Dictionary = ANIME_SUPERS()
+	if anime.has(name):
+		kit[3] = anime[name][0]
+		kit[4] = anime[name][1]
+		kit[5] = anime[name][2]
 	var atk_spec: Dictionary = _prep(kit[2].duplicate(true), col, dm)
 	var sup_spec: Dictionary = _prep(kit[5].duplicate(true), col, dm)
 	var form := {"name": name, "look": look, "hp_mul": 1.0, "speed_mul": 1.0, "reload_mul": 1.0,
@@ -236,13 +241,16 @@ static func build(row: Array) -> Dictionary:
 		if not atk_spec.has("range"):
 			atk_spec["range"] = atk_spec.get("radius", 3.0)
 		form["attack"] = atk_spec
+	var forms := [form]
+	if sup_spec.type == "awaken":
+		forms.append(_awakened_form(form, sup_spec, col, dm))
 	var gtype: String = cls.gad
 	if elem in ["natur", "licht"]:
 		gtype = "heal"
 	var b := {"id": id, "name": name, "title": row[1], "rarity": rarity, "rarity_color": _rarity_color(rarity),
 		"role": cls.role, "desc": "%s – %s mit der Kraft des Elements %s." % [row[1], cls.role, elem.capitalize()], "default_unlocked": false,
 		"hp": hp, "speed": speed, "ammo": 3, "reload": snapped(cls.reload * _var(name, "rl", 0.06), 0.05),
-		"cooldown": 0.38, "charge_hits": 4.0, "forms": [form], "wclass": cls.wclass,
+		"cooldown": 0.38, "charge_hits": 4.0, "forms": forms, "wclass": cls.wclass, "no_evolve": true,
 		"gadget": _gadget(gtype, pre, col)}
 	b["skins"] = theme_skins(b, 3)
 	return b
@@ -467,6 +475,116 @@ static func theme_skin(b: Dictionary, key: String, n := 0) -> Dictionary:
 		lk["weapon"] = opts[_h(seed + "wpk") % opts.size()]
 	var name_s: String = "%s-%s" % [pal[0], b.name]
 	return {"id": "%s_%s" % [b.id, key], "name": name_s, "price": pal[1], "theme": key, "look": lk}
+
+# ------------------------------------------------------------------ Erwachen / Reich / Geistwächter
+# Diese Brawler bekommen statt ihrer normalen Super eine der großen Anime-artigen Fähigkeiten.
+static func ANIME_SUPERS() -> Dictionary:
+	return {
+	# Erwachen: Verwandlung für einige Sekunden (neue Form mit eigenem Angriff + eigener Super)
+	"Taku": ["Erwachen: Sturmklinge", "Erwacht für 10 s: neues Outfit, Aura, stärkere Schnitte mit Windwellen und eine neue Super.",
+		{"type": "awaken", "dur": 10.0, "dmg": 900.0, "radius": 3.0, "form_name": "Erwacht – Sturmklinge", "hair": "flame", "acc": ["scarf", "pauldrons"],
+			"atk_name": "Sturmschnitt", "atk_desc": "Präzisionsschnitt, der eine weite Windklinge aussendet.",
+			"sup_name": "Himmelsspalter", "sup_desc": "5 riesige Windklingen im Fächer.",
+			"sup": {"type": "fan", "count": 5, "spread": 40.0, "dmg": 1100.0, "range": 11.0, "speed": 24.0, "width": 0.8}}],
+	"Blitzklinge": ["Erwachen: Donnerkönigin", "Erwacht für 10 s: Blitzrüstung, Kettenblitz-Hiebe und eine neue Super.",
+		{"type": "awaken", "dur": 10.0, "dmg": 900.0, "radius": 3.0, "stun": 0.6, "form_name": "Erwacht – Donnerkönigin", "hair": "flame", "acc": ["wings", "crown"],
+			"atk_name": "Donnerkette", "atk_desc": "Hiebe, deren Wellen auf 3 Gegner überspringen.",
+			"sup_name": "Himmelsgericht", "sup_desc": "8 Blitze schlagen ein und betäuben.",
+			"sup": {"type": "meteor", "range": 9.0, "count": 8, "dmg": 750.0, "radius": 1.5, "stun": 0.8, "interval": 0.1}}],
+	"Aurelia": ["Erwachen: Sonnengöttin", "Erwacht für 10 s: goldene Rüstung, Sonnenwellen bei jedem Angriff.",
+		{"type": "awaken", "dur": 10.0, "dmg": 1000.0, "radius": 3.2, "form_name": "Erwacht – Sonnengöttin", "acc": ["halo", "wings", "crown", "pauldrons"],
+			"atk_name": "Sonnenschwert", "atk_desc": "Jeder Hieb sendet eine Sonnenwelle.",
+			"sup_name": "Zenit", "sup_desc": "Ein riesiger Sonnenstrahl, der alles durchdringt.",
+			"sup": {"type": "beam", "dmg": 3000.0, "range": 14.0, "width": 1.4, "break": true}}],
+	"Nachtschatten": ["Erwachen: Mondlose Nacht", "Erwacht für 10 s: Schattenform, schneller, mit tödlichen Stichen.",
+		{"type": "awaken", "dur": 10.0, "dmg": 800.0, "radius": 3.0, "form_name": "Erwacht – Mondlose Nacht", "hair": "long", "acc": ["bat_wings", "scarf"],
+			"atk_name": "Nachtstich", "atk_desc": "Blitzschnelle Stiche mit Schattenwelle.",
+			"sup_name": "Schattentanz", "sup_desc": "Springt 5-mal zwischen Gegnern hin und her.",
+			"sup": {"type": "blink", "range": 8.0, "hits": 5, "dmg": 750.0, "stun": 0.3}}],
+	"Kaiser Frost": ["Erwachen: Ewiger Kaiser", "Erwacht für 10 s: Eisrüstung, vernichtende Frosthiebe.",
+		{"type": "awaken", "dur": 10.0, "dmg": 1000.0, "radius": 3.5, "slow": 2.0, "form_name": "Erwacht – Ewiger Kaiser", "hair": "knight", "acc": ["crown", "pauldrons", "spikes", "wings"],
+			"atk_name": "Kaiserfrost", "atk_desc": "Hiebe mit Eiswellen, die einfrieren.",
+			"sup_name": "Weißer Tod", "sup_desc": "Ein Eissturm um ihn, der alles einfriert.",
+			"sup": {"type": "slam", "waves": 3, "radius": 3.0, "dmg": 900.0, "stun": 0.8}}],
+	"Säbelzahn": ["Erwachen: Urbestie", "Erwacht für 10 s: riesige Bestienform mit wilden Krallen.",
+		{"type": "awaken", "dur": 10.0, "dmg": 900.0, "radius": 3.0, "form_name": "Erwacht – Urbestie", "hair": "flame", "acc": ["horns", "spikes", "tail"],
+			"atk_name": "Bestienklaue", "atk_desc": "Wilde Klauenhiebe mit Eiswelle.",
+			"sup_name": "Urschrei", "sup_desc": "Sprung mit gewaltigem Einschlag.",
+			"sup": {"type": "leap", "range": 9.0, "radius": 3.5, "dmg": 2200.0, "stun": 1.0, "break": true}}],
+	# Reich: Kuppel, die Gegner einsperrt
+	"Chronos": ["Reich der stillen Zeit", "Eine Zeitkuppel: Gegner darin sind gefangen und fast eingefroren.",
+		{"type": "domain", "range": 0.0, "radius": 5.0, "dur": 6.0, "dps": 300.0, "slow": 3.0, "dmg_mult": 1.4}],
+	"Astra": ["Reich der tausend Sterne", "Eine Sternenkuppel: Gegner gefangen und zur Mitte gezogen.",
+		{"type": "domain", "range": 0.0, "radius": 5.0, "dur": 6.0, "dps": 450.0, "pull": 1.5, "dmg_mult": 1.5}],
+	"Seelensammler": ["Reich der verlorenen Seelen", "Eine Seelenkuppel: Gegner gefangen, er raubt Leben mit jedem Treffer.",
+		{"type": "domain", "range": 0.0, "radius": 5.0, "dur": 6.0, "dps": 400.0, "slow": 0.8, "dmg_mult": 1.3, "lifesteal": 0.5}],
+	"Echo": ["Reich des Widerhalls", "Eine Klangkuppel: Gegner gefangen, Echo wird viel schneller und stärker.",
+		{"type": "domain", "range": 0.0, "radius": 4.8, "dur": 6.0, "dps": 350.0, "stun": 0.15, "dmg_mult": 1.7, "speed": true}],
+	"Morla": ["Reich des Giftsumpfs", "Eine Giftkuppel: gefangene Gegner nehmen hohen Giftschaden.",
+		{"type": "domain", "range": 0.0, "radius": 5.0, "dur": 6.0, "dps": 650.0, "slow": 1.0, "dmg_mult": 1.2}],
+	"Tiefseeauge": ["Reich der Tiefsee", "Eine Wasserkuppel: Gegner gefangen, verlangsamt und in die Tiefe gezogen.",
+		{"type": "domain", "range": 0.0, "radius": 5.2, "dur": 6.0, "dps": 400.0, "slow": 1.5, "pull": 1.0, "dmg_mult": 1.4}],
+	# Geistwächter: Kampfgeist mit Schlaghagel
+	"Golem": ["Geistwächter: Urgestein", "Ein riesiger Steingeist kämpft 8 s an seiner Seite – schwere Schläge mit Rückstoß.",
+		{"type": "spirit", "dur": 8.0, "dmg": 420.0, "interval": 0.45, "reach": 2.8, "knock": 1.2, "spirit_hair": "bald", "spirit_face": "cyclops", "spirit_acc": ["spikes", "pauldrons", "horns"]}],
+	"Kraken-Kai": ["Geistwächter: Tiefenkrake", "Ein Krakengeist schlägt 7 s lang mit Tentakel-Hagel zu.",
+		{"type": "spirit", "dur": 7.0, "dmg": 150.0, "interval": 0.12, "reach": 3.2, "slow": 0.5, "spirit_hair": "bald", "spirit_face": "fangs", "spirit_acc": ["tail", "spikes"]}],
+	"Mumie Mo": ["Geistwächter: Pharaonengeist", "Ein Pharaonengeist schlägt zu und raubt Leben.",
+		{"type": "spirit", "dur": 7.0, "dmg": 200.0, "interval": 0.16, "reach": 2.6, "spirit_hair": "hood", "spirit_face": "cyclops", "spirit_acc": ["crown"]}],
+	"Felsenfaust": ["Geistwächter: Berggeist", "Ein Berggeist trommelt 7 s lang Faustschläge auf Gegner.",
+		{"type": "spirit", "dur": 7.0, "dmg": 170.0, "interval": 0.12, "reach": 2.6, "spirit_hair": "viking", "spirit_face": "angry", "spirit_acc": ["pauldrons", "beard"]}],
+	"Arietta": ["Geistwächter: Sirene", "Eine singende Geisterdiva schlägt zu und lässt Gegner kurz erstarren.",
+		{"type": "spirit", "dur": 7.0, "dmg": 180.0, "interval": 0.15, "reach": 3.0, "stun": 0.1, "spirit_hair": "long", "spirit_face": "sleepy", "spirit_acc": ["wings", "halo"]}],
+	"Dudel": ["Geistwächter: Rhythmusgeist", "Ein Groove-Geist schlägt im Takt auf Gegner ein.",
+		{"type": "spirit", "dur": 7.0, "dmg": 160.0, "interval": 0.12, "reach": 2.6, "spirit_hair": "afro", "spirit_face": "shades", "spirit_acc": ["bowtie", "pauldrons"]}],
+	}
+
+## Erwachte Form aus der Grundform erzeugen (stärker, neues Aussehen, neue Super).
+static func _awakened_form(base: Dictionary, sup: Dictionary, col: Color, dm: float) -> Dictionary:
+	var f2: Dictionary = base.duplicate(true)
+	f2.name = sup.form_name
+	var lk: Dictionary = f2.look
+	lk["size"] = lk.get("size", 1.0) * 1.12
+	if sup.has("hair"):
+		lk["hair_style"] = sup.hair
+	var acc: Array = lk.get("acc", []).duplicate()
+	for a in sup.get("acc", []):
+		if not a in acc:
+			acc.append(a)
+	lk["acc"] = acc
+	lk["robe"] = (lk.robe as Color).lerp(col.darkened(0.3), 0.5)
+	lk["trim"] = col.lerp(Color.WHITE, 0.3)
+	lk["hair"] = (lk.hair as Color).lerp(col, 0.6)
+	lk["eye"] = col
+	lk["cape"] = not ("wings" in acc or "bat_wings" in acc)
+	f2["aura"] = Color(col.r, col.g, col.b, 0.85)
+	f2["hp_mul"] = 1.2
+	f2["speed_mul"] = 1.1
+	f2["reload_mul"] = 0.7
+	f2["stance"] = 0.7
+	f2["combo_name"] = sup.atk_name
+	f2["combo_desc"] = sup.atk_desc
+	if f2.has("combo"):
+		var steps: Array = []
+		for st in f2.combo:
+			var st2: Dictionary = st.duplicate(true)
+			st2.dmg = round(st2.dmg * 1.4)
+			st2.range = st2.range * 1.1
+			steps.append(st2)
+		var last: Dictionary = steps[-1]
+		last["wave"] = {"dmg": round(650.0 * dm), "range": 7.5, "width": 0.7, "speed": 17.0, "color": col, "pierce": true,
+			"chain": 3 if sup.atk_name == "Donnerkette" else 0, "slow": 1.5 if sup.atk_name == "Kaiserfrost" else 0.0}
+		f2["combo"] = steps
+	else:
+		var atk: Dictionary = f2.attack.duplicate(true)
+		atk.dmg = round(atk.dmg * 1.5)
+		atk["pierce"] = true
+		f2["attack"] = atk
+	var s2: Dictionary = _prep(sup.sup.duplicate(true), col, dm)
+	s2["name"] = sup.sup_name
+	s2["desc"] = sup.sup_desc
+	f2["super"] = s2
+	return f2
 
 # ------------------------------------------------------------------ Individuelle Fähigkeiten
 # Pro Brawler: [Angriffsname, Beschreibung, Angriff, Super-Name, Beschreibung, Super].
