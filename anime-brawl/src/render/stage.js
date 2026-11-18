@@ -2,7 +2,7 @@
 // particles, idle + reaction animations. Also renders card portraits.
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { buildCharacter } from './model.js';
+import { buildCharacter, prewarmLooks, isLookReady } from './model.js';
 import { animate } from './anim.js';
 import { toon, glowUnique } from './toon.js';
 import { VFX } from './vfx.js';
@@ -47,10 +47,20 @@ export class Stage {
     this.offsetX = 0; this.zoom = 1;
   }
   setCharacter(def, skin = null, form = 'base', rarityColor = 0xffd23f) {
+    const look = def.boss ? def.look : lookFor(def, skin, form);
+    const req = (this.req = {});
+    if (!isLookReady(look, 'hi')) {
+      prewarmLooks([look], 'hi').then(() => { if (this.req === req) this._set(def, skin, form, rarityColor); });
+      if (!this.model) return;
+      return;
+    }
+    this._set(def, skin, form, rarityColor);
+  }
+  _set(def, skin = null, form = 'base', rarityColor = 0xffd23f) {
     if (this.model) this.scene.remove(this.model);
     this.def = def; this.form = form;
     const look = def.boss ? def.look : lookFor(def, skin, form);
-    const { group, rig } = buildCharacter(look);
+    const { group, rig } = buildCharacter(look, { quality: 'hi' });
     this.model = group; this.rig = rig; this.scene.add(group);
     group.rotation.y = 0.25;
     this.ring.material.color.setHex(rarityColor); this.ring2.material.color.setHex(rarityColor);
@@ -128,7 +138,7 @@ export function portrait(renderer, def, skin = null, form = 'base') {
     pCanvas = document.createElement('canvas'); pCanvas.width = S; pCanvas.height = S;
   }
   const look = def.boss ? def.look : lookFor(def, skin, form);
-  const { group, rig } = buildCharacter(look, { outline: 0.028 });
+  const { group, rig } = buildCharacter(look, { outline: 0.022, quality: 'lo' });
   animate(rig, 0.016, { move: 0 });
   group.rotation.y = 0.35;
   pScene.add(group);

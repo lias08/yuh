@@ -1,6 +1,8 @@
 // App shell: renderer, main loop, screen router and match flow.
 import * as THREE from 'three';
 import { Stage, portrait } from '../render/stage.js';
+import { prewarmLooks, isLookReady, setLowEnd } from '../render/model.js';
+import { looksFor, lookFor } from '../game/fighter.js';
 import { Save, bData, owned, applyMatch, totalTrophies, seeded, botName, note } from '../core/save.js';
 import { initAudio, music, setVolumes, sfx } from '../core/audio.js';
 import { ROSTER, BY_ID, RARITIES, skinsFor } from '../data/index.js';
@@ -46,6 +48,7 @@ export class App {
   }
   applyQuality() {
     const q = Save.data.settings.quality;
+    setLowEnd(q === 'low');
     const dpr = Math.min(window.devicePixelRatio || 1, q === 'high' ? 2 : q === 'medium' ? 1.5 : 1);
     this.renderer.setPixelRatio(dpr);
     this.renderer.shadowMap.enabled = q !== 'low';
@@ -106,6 +109,8 @@ export class App {
       if (!p.img.isConnected) continue;
       const def = BY_ID[p.id] || (p.id === 'boss_oni' ? this.bossDef : null); if (!def) continue;
       const skin = skinsFor(def).find(s => s.id === p.skinId);
+      const look = def.boss ? def.look : lookFor(def, skin && skin.look ? skin : null, p.form);
+      if (!isLookReady(look, 'lo')) { p.waiting = true; this.portraitQueue.push(p); if (!p.req) { p.req = true; prewarmLooks([look], 'lo'); } if (this.portraitQueue.every(x => x.waiting)) { this.portraitQueue.forEach(x => x.waiting = false); break; } continue; }
       p.img.src = portrait(this.renderer, def, skin && skin.look ? skin : null, p.form);
       p.img.classList.add('ready');
       n++;
@@ -157,8 +162,23 @@ export class App {
     this.pendingMatch = { modeId, lineups, theme, rules: opts.rules || {}, brawler: opts.brawler || Save.data.selected, tournament: opts.tournament };
     if (modeId === 'training') { this.launchWorld(); return; }
     this.show('matchmaking', { modeId, lineups, theme, rules: opts.rules });
+    prewarmLooks(lineups.flatMap(l => looksFor(l.def || BY_ID[l.defId], l.skin)), 'lo');
   }
-  launchWorld() {
+  /** sculpt every model the match needs in background workers, then start */
+  async launchWorld() {
+    const pm = this.pendingMatch;
+    if (pm.launching) return; pm.launching = true;
+    const looks = pm.lineups.flatMap(l => looksFor(l.def || BY_ID[l.defId], l.skin));
+    if (pm.modeId === 'boss' && this.bossDef) looks.push(this.bossDef.look);
+    if (!looks.every(l => isLookReady(l, 'lo'))) {
+      const ov = document.createElement('div'); ov.className = 'loading-ov'; ov.innerHTML = '<div class="spin"></div><b>Kämpfer werden modelliert…</b>';
+      this.modalRoot.appendChild(ov);
+      await prewarmLooks(looks, 'lo');
+      ov.remove();
+    }
+    this._launchWorld();
+  }
+  _launchWorld() {
     const pm = this.pendingMatch;
     const M = MODES[pm.modeId];
     this.ui.innerHTML = ''; this.ui.className = 'ui screen-battle';

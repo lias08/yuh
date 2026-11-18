@@ -25,6 +25,22 @@ export function lookFor(def, skin, form = 'base') {
   return look;
 }
 
+/** every look a fighter may show in a match (forms, skins, summons) — for prewarming */
+export function looksFor(def, skin) {
+  const out = [lookFor(def, skin, 'base')];
+  if (def.trans) out.push(lookFor(def, skin, 'trans'));
+  if (def.trans?.next) out.push(lookFor(def, skin, 'trans2'));
+  const visit = (a) => {
+    if (!a || typeof a !== 'object') return;
+    if (a.unit) { if (a.unit.look === 'owner') out.push(...out.slice(0, 3)); else if (a.unit.look) out.push(a.unit.look); }
+    for (const k of ['list']) if (a[k]) a[k].forEach(visit);
+    if (a.steps) a.steps.forEach(st => visit(st.do));
+    for (const k of ['end', 'then', 'onEnd', 'after', 'onHitAction']) if (a[k]) visit(a[k]);
+  };
+  for (const a of [def.main, def.super, ...(def.gadgets || []), def.trans?.main, def.trans?.super, def.trans?.onEnter, def.trans?.next?.main, def.trans?.next?.super, def.trans?.next?.onEnter]) visit(a);
+  return out;
+}
+
 let UID = 1;
 
 export class Unit {
@@ -104,6 +120,8 @@ export class Fighter extends Unit {
     const look = lookFor(this.def, this.skin, this.form);
     const { group, rig } = buildCharacter(look);
     this.model = group; this.rig = rig;
+    const vis = this.boss ? 1 : 1.22; // visual scale for readability at the battle camera
+    group.scale.setScalar(vis); rig.height *= vis;
     this.container.add(group);
     this.model.rotation.y = -this.face + Math.PI / 2;
   }

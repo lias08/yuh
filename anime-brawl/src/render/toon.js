@@ -21,7 +21,7 @@ const cache = new Map();
  */
 export function toon(color, opts = {}) {
   const key = [color, opts.emissive ?? 0, opts.emissiveIntensity ?? 1, opts.rim ?? 0.45, opts.rimColor ?? 0xffffff,
-    opts.opacity ?? 1, opts.map ? opts.map.uuid : '', opts.flat ? 1 : 0].join('|');
+    opts.opacity ?? 1, opts.map ? opts.map.uuid : '', opts.flat ? 1 : 0, opts.vc ? 1 : 0, opts.shine ?? 0].join('|');
   if (!opts.unique && cache.has(key)) return cache.get(key);
   const m = new THREE.MeshToonMaterial({
     color,
@@ -31,22 +31,26 @@ export function toon(color, opts = {}) {
     transparent: (opts.opacity ?? 1) < 1,
     opacity: opts.opacity ?? 1,
     map: opts.map || null,
+    vertexColors: !!opts.vc,
   });
   const rim = opts.rim ?? 0.45;
   const rimColor = new THREE.Color(opts.rimColor ?? 0xffffff);
   m.userData.rim = { value: rim };
   m.userData.rimColor = { value: rimColor };
   m.userData.flash = { value: 0 };
+  m.userData.shine = { value: opts.shine ?? 0 };
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uRim = m.userData.rim;
     shader.uniforms.uRimColor = m.userData.rimColor;
     shader.uniforms.uFlash = m.userData.flash;
+    shader.uniforms.uShine = m.userData.shine;
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uRim; uniform vec3 uRimColor; uniform float uFlash;')
+      .replace('#include <common>', '#include <common>\nuniform float uRim; uniform vec3 uRimColor; uniform float uFlash; uniform float uShine;')
       .replace('#include <opaque_fragment>', `
         float rimF = 1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0);
         rimF = smoothstep(0.55, 0.85, rimF);
         outgoingLight += uRimColor * rimF * uRim;
+        if (uShine > 0.0) { float hs = dot(normalize(normal), normalize(vec3(0.15, 0.85, 0.5))); float band = smoothstep(0.8, 0.88, hs) * (1.0 - smoothstep(0.92, 0.99, hs)); outgoingLight += band * uShine * (diffuseColor.rgb * 0.6 + 0.25); }
         outgoingLight = mix(outgoingLight, vec3(1.0), uFlash);
         #include <opaque_fragment>`);
   };

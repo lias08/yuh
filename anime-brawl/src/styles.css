@@ -433,3 +433,6 @@ img[data-p] { opacity: 0; transition: opacity .3s; } img[data-p].ready { opacity
 .portrait .hud-feed { top: calc(110px + var(--safe-t)); }
 .portrait .char-info { top: calc(118px + var(--safe-t)); }
 .portrait .ann .t { font-size: 34px; } .portrait .tban .fn { font-size: 30px; }
+
+.loading-ov { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 14px; background: rgba(10,8,28,.85); pointer-events: auto; z-index: 70; font-family: var(--disp); font-size: 20px; }
+.loading-ov .spin { width: 46px; height: 46px; border-radius: 50%; border: 5px solid rgba(255,255,255,.15); border-top-color: var(--yellow); animation: spin .8s linear infinite; }

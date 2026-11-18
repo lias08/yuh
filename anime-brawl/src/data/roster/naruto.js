@@ -1,7 +1,7 @@
 import { P, C, D, BM, A, N, DOM, SUM, BUF, BL, WALL, HOOK, TRAP, SEQ, MULTI, CU, slow, stun, knock, pull, burn, fx, SKIN } from './helpers.js';
 
 const AKATSUKI = { type: 'cloak', color: 0x14141c, color2: 0xc8202a, pattern: 'akatsuki', collar: true, sleeves: 'wide' };
-const FLAK = { type: 'vest', color: 0x4a5a3a, collar: false };
+const FLAK = { type: 'vest', color: 0x4a5a3a, collar: true, collarColor: 0x4a5a3a, under: 0x2c3550 };
 
 export default [
   // 21 ─ NARUTO ───────────────────────────────────────────────────────────────

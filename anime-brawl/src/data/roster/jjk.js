@@ -26,7 +26,7 @@ export default [
     trans: {
       name: 'Shinjuku Gojo', duration: 15, aura: 0x7ad8ff, aura2: 0xffffff, auraStyle: 'flame',
       desc: 'Augenbinde ab, Six Eyes vollständig offen. Blue und Red werden kombiniert, Hollow Purple durchschlägt Wände.',
-      look: { marksRemove: ['blindfold'], extrasRemove: ['blindfold'], eyes: { type: 'sixeyes', color: 0x5ad0ff }, mouth: 'grin', glow: 0x7ad8ff },
+      look: { marksRemove: ['blindfold'], extrasRemove: ['blindfold'], eyes: { type: 'sixeyes', color: 0x5ad0ff }, mouth: 'grin', glow: 0x7ad8ff, hair: { style: 'gojoWild' }, top: { type: 'coat', color: 0x14161f, color2: 0x2a3550, collar: true, buttons: false, sleeves: 'long', replace: true }, bottom: { type: 'pants', color: 0x14161f } },
       stats: { speed: 1.12, dmg: 1.15, reload: 0.8 },
       passive: [{ type: 'infinity', reduce: 0.55 }],
       main: CU('gojoCombo', { name: 'Blue → Red Kombination', desc: 'Blue zieht Gegner zusammen, Red detoniert gleich danach am selben Punkt.', dmg: 760, anim: 'cast', sfx: 'space' }),

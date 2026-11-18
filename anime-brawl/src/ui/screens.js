@@ -612,7 +612,7 @@ function matchmaking(app, params) {
   app.bossDef = BOSS_DEF;
   hydrate(app);
   app.stageVisible = false;
-  setTimeout(() => { if (app.screen === 'matchmaking') app.launchWorld(); }, 2600);
+  setTimeout(() => { if (app.screen === 'matchmaking') app.launchWorld(); }, 2800);
 }
 const TIPS = ['Halte die Form-Anzeige im Blick — jede Transformation verändert dein ganzes Moveset.', 'Büsche verstecken dich, solange kein Gegner direkt daneben steht.', 'Supers zerstören Wände und Kisten.', 'Divine-Kämpfer haben zweistufige oder besonders aufwendige Transformationen.', 'Tippe den Angriffsknopf für Auto-Aim, ziehe ihn zum präzisen Zielen.', 'Gojo verlangsamt Geschosse mit Infinity — greife ihn im Nahkampf an!', 'Beerus\' Hakai löscht Gegner unter 40 % LP sofort aus.', 'Minatos Kunai sind Teleport-Markierungen — leg sie vorher strategisch.'];
 

@@ -32,7 +32,7 @@ export default [
       next: {
         name: 'Ultra Instinct', duration: 14, aura: 0xd8e4ff, aura2: 0x9ab8ff, auraStyle: 'flame', auraIntensity: 1.4,
         desc: 'Der Körper bewegt sich von selbst: 45 % automatisches Ausweichen, lautlose Schlagfolgen, und die Super blitzt zwischen allen Gegnern hin und her.',
-        look: { hair: { style: 'saiyan', color: 0xd8dce8 }, eyes: { type: 'glow', color: 0xc8d4f0 }, browColor: 0xb8c0d8, mouth: 'flat', top: { type: 'gi', color: 0xff7a1a, color2: 0x2a4adf, under: 0x2a4adf, sleeves: 'none' }, angry: false, glow: 0xd8e4ff },
+        look: { hair: { style: 'uiHair', color: 0xd8dce8 }, eyes: { type: 'glow', color: 0xc8d4f0 }, browColor: 0xb8c0d8, mouth: 'flat', top: { type: 'tank', color: 0x2a4adf, sleeves: 'none', replace: true }, angry: false, glow: 0xd8e4ff, marksAdd: ['scarCheek'], extrasAdd: ['wristbands'] },
         stats: { dmg: 1.35, speed: 1.25, reload: 0.7 },
         passive: [{ type: 'dodge', chance: 0.45, name: 'Selbstbewegung' }],
         main: C({ name: 'Lautloser Schlagwirbel', desc: 'Drei Schläge mit Vorwärtsdrang, jeder bricht durch Deckung.', range: 2.0, arc: 90, dmg: 560, hits: 3, gap: 0.08, lunge: 1.0, color: 0xd8e4ff, anim: 'flurry', sfx: 'punch' }),

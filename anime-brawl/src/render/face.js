@@ -17,8 +17,8 @@ function shade(c, f) {
 function eye(ctx, x, y, side, e) {
   const type = e.type || 'normal';
   const iris = e.color ?? 0x3a2a1a;
-  const w = type === 'sharp' || type === 'demon' ? 15 : 14;
-  const h = type === 'sharp' || type === 'demon' ? 11 : 15;
+  const w = type === 'sharp' || type === 'demon' ? 18 : 17;
+  const h = type === 'sharp' || type === 'demon' ? 14 : 20;
   ctx.save();
   ctx.translate(x, y);
   if (type === 'closed') {
@@ -31,7 +31,7 @@ function eye(ctx, x, y, side, e) {
   ctx.beginPath(); ctx.ellipse(0, 0, w, h, 0, 0, Math.PI * 2); ctx.fill();
   if (type !== 'blank') {
     // iris with vertical gradient
-    const ir = type === 'dots' ? 4 : 10.5;
+    const ir = type === 'dots' ? 4 : 13.5;
     const g = ctx.createLinearGradient(0, -ir, 0, ir);
     g.addColorStop(0, shade(iris, 0.55)); g.addColorStop(0.55, hex(iris)); g.addColorStop(1, shade(iris, 1.45));
     ctx.fillStyle = g;
@@ -78,13 +78,16 @@ function eye(ctx, x, y, side, e) {
     ctx.beginPath(); ctx.ellipse(side * 1.2 - 3.5, -3.5, 3.2, 3.8, 0, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(side * 1.2 + 4, 5, 1.6, 0, Math.PI * 2); ctx.fill();
   }
+  // eyelid shadow over the top of the iris
+  if (type !== 'blank') { ctx.save(); ctx.beginPath(); ctx.ellipse(0, 0, w, h, 0, 0, Math.PI * 2); ctx.clip(); ctx.fillStyle = 'rgba(40,20,40,0.22)'; ctx.fillRect(-w, -h, w * 2, h * 0.55); ctx.restore(); }
   // upper lash line (thick, anime-style flick at outer corner)
   ctx.strokeStyle = '#1b1220'; ctx.lineCap = 'round'; ctx.lineWidth = type === 'sharp' || type === 'demon' ? 4.5 : 4;
   ctx.beginPath();
   ctx.ellipse(0, 0, w + 0.5, h + 0.5, 0, Math.PI * 1.08, Math.PI * 1.92); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(side * (w - 1), -h * 0.45); ctx.lineTo(side * (w + 5), -h * 0.75); ctx.stroke();
-  ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.ellipse(0, 0, w, h, 0, Math.PI * 0.2, Math.PI * 0.8); ctx.stroke();
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.ellipse(0, 0, w, h, 0, Math.PI * 0.25, Math.PI * 0.75); ctx.stroke();
+  ctx.lineWidth = 5.5; ctx.beginPath(); ctx.ellipse(0, -1, w + 0.5, h + 0.5, 0, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
   ctx.restore();
 }
 
@@ -107,7 +110,7 @@ export function faceTexture(face) {
   }
   const marks = face.marks || [];
   const e = face.eyes || {};
-  const sep = 25;
+  const sep = 29;
   if (marks.includes('fourEyes')) {
     eye(ctx, CX - sep - 6, EY + 12, -1, { ...e, type: 'demon' });
     eye(ctx, CX + sep + 6, EY + 12, 1, { ...e, type: 'demon' });
@@ -122,8 +125,8 @@ export function faceTexture(face) {
     const angry = e.type === 'sharp' || e.type === 'demon' || face.angry;
     for (const s of [-1, 1]) {
       ctx.beginPath();
-      ctx.moveTo(CX + s * (sep - 12), EY - 22 + (angry ? 4 : 0));
-      ctx.quadraticCurveTo(CX + s * sep, EY - 28, CX + s * (sep + 14), EY - 24 - (angry ? 2 : 0));
+      ctx.moveTo(CX + s * (sep - 14), EY - 27 + (angry ? 5 : 0));
+      ctx.quadraticCurveTo(CX + s * sep, EY - 34, CX + s * (sep + 16), EY - 29 - (angry ? 3 : 0));
       ctx.stroke();
     }
   }
