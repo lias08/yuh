@@ -1,0 +1,14 @@
+# Unity
+BrawlArena/[Ll]ibrary/
+BrawlArena/[Tt]emp/
+BrawlArena/[Oo]bj/
+BrawlArena/[Bb]uild/
+BrawlArena/[Bb]uilds/
+BrawlArena/[Ll]ogs/
+BrawlArena/[Uu]ser[Ss]ettings/
+BrawlArena/*.csproj
+BrawlArena/*.sln
+BrawlArena/.vs/
+BrawlArena/.idea/
+*.apk
+*.aab
