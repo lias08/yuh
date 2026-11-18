@@ -36,6 +36,10 @@ var aim_mesh: MeshInstance3D
 var _sector_cache := {}
 var _crescent: ArrayMesh
 var _respawn_t := -1.0
+var lobs: Array = []
+var dashes: Array = []
+var _aim_frac := 1.0          # gezogene Stärke (0..1) für Würfe
+var _orb_mesh: SphereMesh
 
 class JoyDraw extends Control:
 	var radius := 110.0
@@ -255,22 +259,139 @@ func melee_swing(f: Fighter, step: Dictionary) -> void:
 	if hits > 0:
 		Game.play_sfx("hit", 0.6)
 
+## Reichweite des Hauptangriffs einer Form.
+func attack_range(f: Dictionary) -> float:
+	var atk: Dictionary = f.get("attack", {})
+	return atk.range if not atk.is_empty() else f.combo[0].range
+
+## Projektil erzeugen (Klingenwelle, Kugel, Lichtkugel, Stern).
+func _spawn_projectile(f: Fighter, dir: Vector3, dmg: float, rng: float, speed: float, width: float, color: Color, pierce: bool, explode: float, visual: String) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	match visual:
+		"crescent":
+			mi.mesh = _crescent_mesh()
+			mi.scale = Vector3(width * 1.6, 1.0, width * 1.0)
+		"bullet":
+			mi.mesh = _orb()
+			mi.scale = Vector3(width * 1.2, width * 1.2, width * 2.8)
+		_:
+			mi.mesh = _orb()
+			mi.scale = Vector3.ONE * width * 2.0
+	mi.material_override = _fx_mat(Color(color.r, color.g, color.b, 0.9))
+	mi.position = f.position + Vector3(0, 0.75, 0) + dir * 0.6
+	mi.rotation.y = atan2(-dir.x, -dir.z)
+	add_child(mi)
+	waves.append({"node": mi, "dir": dir, "speed": speed, "range": rng, "travel": 0.0, "dmg": dmg, "width": width,
+		"hit": [], "pierce": pierce, "explode": explode, "color": color, "owner": f, "visual": visual})
+	return mi
+
+func _orb() -> SphereMesh:
+	if _orb_mesh == null:
+		_orb_mesh = SphereMesh.new()
+		_orb_mesh.radius = 0.5; _orb_mesh.height = 1.0; _orb_mesh.radial_segments = 12; _orb_mesh.rings = 6
+	return _orb_mesh
+
 ## Klingenwelle (aus Kombo oder Super).
 func spawn_wave(f: Fighter, w: Dictionary, is_super: bool) -> void:
-	var mi := MeshInstance3D.new()
-	mi.mesh = _crescent_mesh()
-	mi.material_override = _fx_mat(Color(w.color.r, w.color.g, w.color.b, 0.85))
-	var width: float = w.width
-	mi.scale = Vector3(width * 1.6, 1.0, width * 1.0)
-	mi.position = f.position + Vector3(0, 0.65, 0) + f.aim_dir * 0.6
-	mi.rotation.y = atan2(-f.aim_dir.x, -f.aim_dir.z)
-	add_child(mi)
-	waves.append({"node": mi, "dir": f.aim_dir, "speed": w.speed, "range": w.range, "travel": 0.0, "dmg": w.dmg,
-		"width": width, "hit": [], "pierce": w.get("pierce", true), "explode": w.get("explode", 0.0), "color": w.color, "owner": f})
+	var mi := _spawn_projectile(f, f.aim_dir, w.dmg, w.range, w.speed, w.width, w.color, w.get("pierce", true), w.get("explode", 0.0), "crescent")
 	Game.play_sfx("wave", 0.8 if is_super else 0.5, 1.0 if is_super else 1.3)
 	if is_super:
 		_shake = max(_shake, 0.25)
 		_burst(mi.position, w.color, 24, 5.0, 0.18)
+
+## Schuss mit Streuung und Salven.
+func fire_shot(f: Fighter, s: Dictionary, dir: Vector3, is_super: bool) -> void:
+	for b in int(s.get("burst", 1)):
+		if b == 0:
+			_volley(f, s, dir, is_super)
+		else:
+			get_tree().create_timer(b * s.get("interval", 0.1), false).timeout.connect(func():
+				if f.alive: _volley(f, s, dir, is_super))
+
+func _volley(f: Fighter, s: Dictionary, dir: Vector3, is_super: bool) -> void:
+	var n: int = int(s.get("count", 1))
+	var spread: float = s.get("spread", 0.0)
+	for i in n:
+		var a: float = lerp(-spread / 2.0, spread / 2.0, float(i) / (n - 1)) if n > 1 else 0.0
+		var d := dir.rotated(Vector3.UP, deg_to_rad(a))
+		_spawn_projectile(f, d, s.dmg, s.range, s.speed, s.get("width", 0.25), s.color, s.get("pierce", false), 0.0, s.get("visual", "bullet"))
+	_burst(f.position + Vector3(0, 0.8, 0) + dir * 0.8, s.color, 8, 3.0, 0.08)
+	Game.play_sfx("shot", 0.7 if is_super else 0.5, 0.8 if n > 2 else 1.1)
+
+## Bogenwurf mit Landemarkierung, explodiert am Ziel.
+func throw_lob(f: Fighter, s: Dictionary, dir: Vector3, is_super: bool) -> void:
+	var dist: float = clamp(s.range * _aim_frac, 1.0, s.range)
+	var target := f.position + dir * dist
+	target = Vector3(clamp(target.x, -ARENA_W / 2 + 0.5, ARENA_W / 2 - 0.5), 0, clamp(target.z, -ARENA_H / 2 + 0.5, ARENA_H / 2 - 0.5))
+	var bomb := MeshInstance3D.new()
+	bomb.mesh = _orb()
+	bomb.material_override = ModelBuilder.mat(Color(0.15, 0.15, 0.2))
+	bomb.scale = Vector3.ONE * (0.6 if is_super else 0.38)
+	add_child(bomb)
+	var marker := MeshInstance3D.new()
+	marker.mesh = _sector_mesh(1.0, 359.9, 0.8)
+	marker.material_override = _fx_mat(Color(s.color.r, s.color.g, s.color.b, 0.6))
+	marker.position = target + Vector3(0, 0.06, 0)
+	marker.scale = Vector3.ONE * s.radius
+	add_child(marker)
+	var start := f.position + Vector3(0, 1.0, 0)
+	lobs.append({"node": bomb, "marker": marker, "start": start, "target": target, "t": 0.0,
+		"dur": clamp(dist / 9.0, 0.45, 1.0), "dmg": s.dmg, "radius": s.radius, "color": s.color, "owner": f, "height": 1.8 + dist * 0.2})
+	Game.play_sfx("swoosh", 0.7, 0.8)
+
+func _update_lobs(delta: float) -> void:
+	for i in range(lobs.size() - 1, -1, -1):
+		var l: Dictionary = lobs[i]
+		l.t += delta
+		var k: float = clamp(l.t / l.dur, 0.0, 1.0)
+		var p: Vector3 = l.start.lerp(l.target, k)
+		p.y = lerp(l.start.y, 0.3, k) + sin(k * PI) * l.height
+		l.node.position = p
+		l.node.rotate_x(delta * 8.0)
+		if k >= 1.0:
+			_explode(l.target, l.radius, l.dmg, l.color, l.owner)
+			l.node.queue_free()
+			l.marker.queue_free()
+			lobs.remove_at(i)
+
+## Sturmangriff: der Brawler rast nach vorne und trifft jeden Gegner auf dem Weg einmal.
+func dash(f: Fighter, s: Dictionary, dir: Vector3) -> void:
+	dashes.append({"f": f, "dir": dir, "left": s.range, "speed": s.speed, "dmg": s.dmg, "color": s.color, "hit": []})
+	Game.play_sfx("charge", 0.7, 1.4)
+	_shake = 0.2
+
+func _update_dashes(delta: float) -> void:
+	for i in range(dashes.size() - 1, -1, -1):
+		var d: Dictionary = dashes[i]
+		var f: Fighter = d.f
+		var step: float = min(d.left, d.speed * delta)
+		var before := f.position
+		f.dash_move(d.dir * step)
+		d.left -= step
+		_burst(f.position + Vector3(0, 0.3, 0), Color(0.9, 0.85, 0.7), 2, 1.5, 0.12)
+		for dm in dummies:
+			if dm in d.hit:
+				continue
+			if (dm.pos - f.position).length() < 1.2:
+				d.hit.append(dm)
+				_damage_dummy(dm, d.dmg, f)
+				dm.shake = 0.4
+				_burst(dm.pos + Vector3(0, 1, 0), d.color, 20, 6.0, 0.15)
+		if d.left <= 0.0 or (f.position - before).length() < step * 0.2:
+			_ring_fx(f.position, 1.8, d.color, 0.3)
+			dashes.remove_at(i)
+
+## Rundumschlag: Projektile in alle Richtungen (mehrere Wellen).
+func nova(f: Fighter, s: Dictionary) -> void:
+	for b in int(s.get("burst", 1)):
+		get_tree().create_timer(b * 0.25 + 0.01, false).timeout.connect(func():
+			if not f.alive: return
+			var n: int = int(s.count)
+			for i in n:
+				var a := TAU * i / n + b * PI / n
+				_spawn_projectile(f, Vector3(cos(a), 0, sin(a)), s.dmg, s.range, s.speed, s.get("width", 0.3), s.color, true, 0.0, "orb")
+			_ring_fx(f.position, 2.0, s.color, 0.3)
+			Game.play_sfx("wave", 0.6, 1.5))
 
 func charge_effect(f: Fighter, sup: Dictionary) -> void:
 	Game.play_sfx("charge", 1.0)
@@ -300,7 +421,7 @@ func _explode(pos: Vector3, radius: float, dmg: float, color: Color, f: Fighter)
 		var to: Vector3 = d.pos - pos
 		to.y = 0
 		if to.length() <= radius + d.radius:
-			_damage_dummy(d, dmg * 0.5, f)
+			_damage_dummy(d, dmg, f)
 	_burst(pos + Vector3(0, 0.6, 0), color, 60, 9.0, 0.3)
 	_burst(pos + Vector3(0, 0.6, 0), Color.WHITE, 30, 5.0, 0.25)
 	_ring_fx(pos, radius, color, 0.45)
@@ -324,6 +445,8 @@ func _process(delta: float) -> void:
 			player.respawn(Vector3(0, 0, 8))
 	_update_dummies(delta)
 	_update_waves(delta)
+	_update_lobs(delta)
+	_update_dashes(delta)
 	_update_enemy_shots(delta)
 	_update_fx(delta)
 	_update_aim()
@@ -333,7 +456,8 @@ func _process(delta: float) -> void:
 func _unhandled_key_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_SPACE:
-			player.try_attack(auto_aim(player.def.forms[player.form_index].combo[0].range + 3.0))
+			_aim_frac = _auto_frac(attack_range(player.form()))
+			player.try_attack(auto_aim(attack_range(player.form()) + 3.0))
 		elif event.keycode == KEY_E:
 			player.try_super(auto_aim(12.0))
 		elif event.keycode == KEY_ESCAPE:
@@ -386,7 +510,7 @@ func _update_waves(delta: float) -> void:
 		if blocked(nxt):
 			done = true
 			if w.explode > 0.0:
-				_explode(node.position, w.explode, w.dmg, w.color, w.owner)
+				_explode(node.position, w.explode, w.dmg * 0.5, w.color, w.owner)
 		else:
 			for d in dummies:
 				if d in w.hit:
@@ -399,14 +523,14 @@ func _update_waves(delta: float) -> void:
 					if not w.pierce:
 						done = true
 						if w.explode > 0.0:
-							_explode(d.pos, w.explode, w.dmg, w.color, w.owner)
+							_explode(d.pos, w.explode, w.dmg * 0.5, w.color, w.owner)
 						break
 		node.position = nxt
 		w.travel += step
 		if not done and w.travel >= w.range:
 			done = true
 			if w.explode > 0.0:
-				_explode(nxt, w.explode, w.dmg, w.color, w.owner)
+				_explode(nxt, w.explode, w.dmg * 0.5, w.color, w.owner)
 		var fade: float = clamp((w.range - w.travel) / 2.0, 0.2, 1.0)
 		(node.material_override as StandardMaterial3D).albedo_color.a = 0.85 * fade
 		if randf() < 0.6:
@@ -641,14 +765,25 @@ func _update_aim() -> void:
 	aim_mesh.position = player.position + Vector3(0, 0.05, 0)
 	aim_mesh.rotation.y = atan2(-dir.x, -dir.z)
 	var sm := aim_mesh.material_override as ShaderMaterial
-	if is_super:
-		var sup: Dictionary = form.super
-		aim_mesh.mesh = _sector_mesh(sup.range, 8.0 + sup.width * 6.0)
-		sm.set_shader_parameter("color", Color(1, 0.85, 0.15, 0.45))
-	else:
-		var st: Dictionary = form.combo[0]
-		aim_mesh.mesh = _sector_mesh(st.range, st.arc)
-		sm.set_shader_parameter("color", Color(1, 1, 1, 0.45))
+	var spec: Dictionary = form.super if is_super else form.get("attack", {"type": "melee"})
+	var kind: String = spec.get("type", "wave" if is_super else "melee")
+	var joy: JoyDraw = sup_joy if is_super else atk_joy
+	var frac: float = clamp(v.length() / (joy.radius * 0.8), 0.25, 1.0)
+	match kind:
+		"melee":
+			var st: Dictionary = form.combo[0]
+			aim_mesh.mesh = _sector_mesh(st.range, st.arc)
+		"lob":
+			aim_mesh.mesh = _sector_mesh(spec.range * frac + spec.radius, 2.0 * rad_to_deg(atan2(spec.radius, max(0.5, spec.range * frac))), spec.range * frac - spec.radius)
+		"nova":
+			aim_mesh.mesh = _sector_mesh(spec.range, 359.9)
+		"shot":
+			aim_mesh.mesh = _sector_mesh(spec.range, max(6.0, spec.get("spread", 0.0) + 6.0))
+		"dash":
+			aim_mesh.mesh = _sector_mesh(spec.range, 10.0)
+		_:
+			aim_mesh.mesh = _sector_mesh(spec.range, 8.0 + spec.get("width", 0.5) * 6.0)
+	sm.set_shader_parameter("color", Color(1, 0.85, 0.15, 0.45) if is_super else Color(1, 1, 1, 0.45))
 
 # ==================================================================== HUD & Touch
 func _build_hud() -> void:
@@ -763,10 +898,20 @@ func _release(t: Dictionary) -> void:
 		"move":
 			_layout_hud()
 		"attack":
-			var r: float = player.form().combo[0].range + 3.0
-			player.try_attack(auto_aim(r) if tap else Vector3(v.x, 0, v.y).normalized())
+			var r: float = attack_range(player.form())
+			_aim_frac = _auto_frac(r) if tap else clamp(v.length() / (atk_joy.radius * 0.8), 0.25, 1.0)
+			player.try_attack(auto_aim(r + 3.0) if tap else Vector3(v.x, 0, v.y).normalized())
 		"super":
+			var sr: float = player.form().super.range
+			_aim_frac = _auto_frac(sr) if tap else clamp(v.length() / (sup_joy.radius * 0.8), 0.25, 1.0)
 			player.try_super(auto_aim(14.0) if tap else Vector3(v.x, 0, v.y).normalized())
+
+## Wurfweite beim Antippen: Entfernung zur nächsten Puppe.
+func _auto_frac(rng: float) -> float:
+	var best := rng
+	for d in dummies:
+		best = min(best, (d.pos - player.position).length())
+	return clamp(best / rng, 0.25, 1.0)
 
 func _joy_vector() -> Vector2:
 	var t = _touch_in("move")
@@ -799,7 +944,8 @@ func _update_hud(delta: float) -> void:
 		st.set_border_width_all(3)
 		st.border_color = Color(0.05, 0.03, 0.1)
 		evo_dots[i].add_theme_stylebox_override("panel", st)
-	info_label.text = "Kombo: %d Hieb(e) pro Munition\nSchaden gesamt: %d\nSuper: %d%%" % [f.combo.size(), int(total_damage), int(player.super_charge * 100)]
+	var hits_text: String = ("Kombo: %d Hieb(e) pro Munition" % f.combo.size()) if f.has("combo") else ("Angriff: " + f.combo_name)
+	info_label.text = "%s\nSchaden gesamt: %d\nSuper: %d%%" % [hits_text, int(total_damage), int(player.super_charge * 100)]
 	banner_t += delta
 	banner.modulate.a = clamp(1.6 - banner_t, 0.0, 1.0)
 	banner.scale = Vector2.ONE * lerp(1.5, 1.0, clamp(banner_t / 0.2, 0.0, 1.0))

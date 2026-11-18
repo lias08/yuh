@@ -58,7 +58,7 @@ func apply_form(i: int, animate: bool) -> void:
 	form_index = clamp(i, 0, def.forms.size() - 1)
 	if rig.has("root"):
 		rig.root.queue_free()
-	rig = ModelBuilder.build(form().look)
+	rig = ModelBuilder.build(Game.look_for(def, form_index))
 	add_child(rig.root)
 	_foot_rest_l = rig.foot_l.position
 	_foot_rest_r = rig.foot_r.position
@@ -121,6 +121,15 @@ func try_attack(dir: Vector3) -> bool:
 	if dir.length_squared() > 0.0001:
 		aim_dir = dir.normalized()
 	_face(aim_dir)
+	var atk: Dictionary = form().get("attack", {})
+	if not atk.is_empty():
+		# Fernkampf: Schuss (mit Salven) oder Wurf
+		_swing_t = 0.0; _swing_dur = 0.2; _swing_dir = "thrust" if atk.type == "shot" else "over"
+		if atk.type == "lob":
+			arena.throw_lob(self, atk, aim_dir, false)
+		else:
+			arena.fire_shot(self, atk, aim_dir, false)
+		return true
 	var combo: Array = form().combo
 	for i in combo.size():
 		var step: Dictionary = combo[i]
@@ -155,7 +164,16 @@ func try_super(dir: Vector3) -> bool:
 		aim_dir = dir.normalized()
 	_face(aim_dir)
 	var sup: Dictionary = form().super
-	if sup.charge > 0.0:
+	var stype: String = sup.get("type", "wave")
+	if stype != "wave":
+		_super_t = 0.0
+		match stype:
+			"shot": arena.fire_shot(self, sup, aim_dir, true)
+			"lob": arena.throw_lob(self, sup, aim_dir, true)
+			"dash": arena.dash(self, sup, aim_dir)
+			"nova": arena.nova(self, sup)
+		return true
+	if sup.get("charge", 0.0) > 0.0:
 		_rooted_until = _time + sup.charge + 0.2
 		_super_t = 0.0
 		arena.charge_effect(self, sup)
@@ -172,13 +190,28 @@ func try_super(dir: Vector3) -> bool:
 
 ## Super-Aufladung durch Schaden an Gegnern (wie im Vorbild: X volle Kombos = 1 Super).
 func add_charge(damage: float) -> void:
-	var per_use := 0.0
-	for s in form().combo:
-		per_use += s.dmg + (s.wave.dmg if s.has("wave") else 0.0)
+	var per_use: float = attack_damage(form())
 	var was_ready := super_charge >= 1.0
 	super_charge = min(1.0, super_charge + damage / (per_use * def.charge_hits))
 	if not was_ready and super_charge >= 1.0:
 		Game.play_sfx("ready", 0.8)
+
+## Schaden einer kompletten Angriffsaktion (für Super-Aufladung und Anzeige).
+static func attack_damage(f: Dictionary) -> float:
+	var atk: Dictionary = f.get("attack", {})
+	if not atk.is_empty():
+		if atk.type == "lob":
+			return atk.dmg
+		return atk.dmg * atk.get("count", 1) * atk.get("burst", 1) * (0.6 if atk.get("count", 1) > 2 else 1.0)
+	var total := 0.0
+	for s in f.combo:
+		total += s.dmg + (s.wave.dmg if s.has("wave") else 0.0)
+	return total
+
+## Kurzer Sturmangriff (vom Match gesteuert).
+func dash_move(delta_pos: Vector3) -> void:
+	position = arena.move_circle(position, delta_pos, radius)
+	_move = 1.0
 
 func take_damage(amount: float) -> void:
 	if not alive:
@@ -242,6 +275,9 @@ func _process(delta: float) -> void:
 				wrot = Vector3(0, -a, 0)
 				yaw_extra = -a * 0.25
 				hl = hl.lerp(hr * Vector3(0.4, 1, 1), 0.4)
+			"thrust":
+				hr = Vector3(0.3, 0.8, lerp(-0.3, -0.7, sin(k * PI)))
+				wrot = Vector3(0, 0, 0)
 			_:
 				hr = Vector3(0.2, lerp(1.6, 0.6, e), -0.5)
 				wrot = Vector3(deg_to_rad(lerp(80.0, -15.0, e)), 0, 0)

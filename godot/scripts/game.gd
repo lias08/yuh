@@ -9,6 +9,7 @@ const SAVE_PATH := "user://brawlarena_save.json"
 var data := {
 	"coins": 500, "gems": 20, "trophies": 0, "unlocked": [], "selected": "klingengeist",
 	"music": 0.6, "sfx": 0.8, "boxes_opened": 0,
+	"owned_skins": [], "equipped": {}, "last_free_box": 0.0,
 }
 var brawlers: Array = []
 var _sfx_cache := {}
@@ -62,40 +63,157 @@ func selected_brawler() -> Dictionary:
 func redeem_code(code: String) -> String:
 	if code.strip_edges() != "67":
 		return ""
+	if not data.has("owned_skins"):
+		data.owned_skins = []
 	var count := 0
 	for b in brawlers:
 		if not is_unlocked(b.id):
 			data.unlocked.append(b.id)
 			count += 1
+	var skins := 0
+	for b in brawlers:
+		for sk in b.get("skins", []):
+			if not owns_skin(sk.id):
+				data.owned_skins.append(sk.id)
+				skins += 1
 	save_game()
-	if count == 0:
-		return "Code eingelöst! Du besitzt bereits alle Brawler."
-	return "Code eingelöst! %d Brawler freigeschaltet." % count
+	if count == 0 and skins == 0:
+		return "Du besitzt bereits alle Brawler und Skins!"
+	return "%d Brawler und %d Skins freigeschaltet!" % [count, skins]
 
-## Brawl-Box: Münzen, Edelsteine und mit Glück ein neuer Brawler.
-const BOX_PRICE := 100
-func open_box() -> Array:
-	if data.coins < BOX_PRICE:
-		return []
-	data.coins -= BOX_PRICE
+# ------------------------------------------------------------------ Skins
+func get_skin(b: Dictionary, skin_id: String) -> Dictionary:
+	for sk in b.get("skins", []):
+		if sk.id == skin_id:
+			return sk
+	return {}
+
+func owns_skin(skin_id: String) -> bool:
+	return skin_id in data.owned_skins
+
+func equipped_skin(b: Dictionary) -> Dictionary:
+	return get_skin(b, data.equipped.get(b.id, ""))
+
+## Aussehen einer Form inkl. ausgerüstetem (oder angegebenem) Skin.
+func look_for(b: Dictionary, form_i: int, skin_override := "-") -> Dictionary:
+	var look: Dictionary = b.forms[form_i].look.duplicate()
+	var sk: Dictionary = equipped_skin(b) if skin_override == "-" else get_skin(b, skin_override)
+	if not sk.is_empty():
+		for key in ["robe", "trim", "hat", "blade"]:
+			if look.has(key):
+				var c: Color = look[key]
+				look[key] = Color.from_hsv(fposmod(c.h + sk.hue, 1.0), max(c.s, 0.35) if c.s > 0.05 else c.s, c.v)
+		if sk.has("hair"):
+			look.hair = sk.hair
+	return look
+
+func buy_skin(b: Dictionary, skin_id: String) -> String:
+	var sk := get_skin(b, skin_id)
+	if sk.is_empty() or owns_skin(skin_id):
+		return ""
+	if data.gems < sk.price:
+		return "Nicht genug Edelsteine! (%d benötigt)" % sk.price
+	data.gems -= sk.price
+	data.owned_skins.append(skin_id)
+	data.equipped[b.id] = skin_id
+	save_game()
+	return "ok"
+
+func equip_skin(b: Dictionary, skin_id: String) -> void:
+	data.equipped[b.id] = skin_id
+	save_game()
+
+# ------------------------------------------------------------------ Boxen
+const BOXES := {
+	"brawl": {"name": "Brawl-Box", "price": 100, "currency": "coins", "rolls": 3, "brawler": 0.10, "color": Color(0.25, 0.55, 1.0)},
+	"big": {"name": "Große Box", "price": 30, "currency": "gems", "rolls": 6, "brawler": 0.22, "color": Color(1.0, 0.5, 0.15)},
+	"mega": {"name": "Mega-Box", "price": 80, "currency": "gems", "rolls": 10, "brawler": 0.45, "color": Color(0.75, 0.3, 1.0)},
+}
+const FREE_BOX_SECONDS := 4 * 3600
+
+func can_afford_box(type: String) -> bool:
+	var bx: Dictionary = BOXES[type]
+	return data[bx.currency] >= bx.price
+
+func free_box_ready() -> bool:
+	return Time.get_unix_time_from_system() - float(data.last_free_box) >= FREE_BOX_SECONDS
+
+func free_box_wait_text() -> String:
+	var left := int(FREE_BOX_SECONDS - (Time.get_unix_time_from_system() - float(data.last_free_box)))
+	return "%dh %02dm" % [left / 3600, (left % 3600) / 60]
+
+## Öffnet eine Box. Rückgabe: Liste von Belohnungen {kind, text, color, amount, id}.
+func open_box(type: String, free := false) -> Array:
+	var bx: Dictionary = BOXES[type]
+	if free:
+		if not free_box_ready():
+			return []
+		data.last_free_box = Time.get_unix_time_from_system()
+	else:
+		if not can_afford_box(type):
+			return []
+		data[bx.currency] -= bx.price
 	data.boxes_opened += 1
 	var rewards: Array = []
-	var locked: Array = brawlers.filter(func(b): return not is_unlocked(b.id))
-	if locked.size() > 0 and randf() < 0.12:
-		var b = locked[randi() % locked.size()]
-		data.unlocked.append(b.id)
-		rewards.append("NEUER BRAWLER: " + b.name + "!")
-	var coins := randi_range(40, 120)
-	data.coins += coins
-	rewards.append("+%d Münzen" % coins)
-	if randf() < 0.3:
-		var gems := randi_range(2, 8)
+	var coins := 0
+	var gems := 0
+	for i in bx.rolls:
+		var r := randf()
+		if r < bx.brawler:
+			var b := _roll_locked_brawler()
+			if not b.is_empty():
+				data.unlocked.append(b.id)
+				rewards.append({"kind": "brawler", "id": b.id, "text": b.name, "sub": "NEUER BRAWLER! (" + b.rarity + ")", "color": b.rarity_color})
+				continue
+		if r > 0.93:
+			var sk := _roll_skin()
+			if not sk.is_empty():
+				data.owned_skins.append(sk.skin.id)
+				rewards.append({"kind": "skin", "id": sk.skin.id, "text": sk.skin.name, "sub": "NEUER SKIN für " + sk.brawler.name, "color": Color(1, 0.5, 0.85)})
+				continue
+		if r > 0.78:
+			gems += randi_range(2, 6)
+		else:
+			coins += randi_range(25, 70)
+	if gems > 0:
 		data.gems += gems
-		rewards.append("+%d Edelsteine" % gems)
-	if locked.size() == 0 and rewards.size() < 3:
-		rewards.append("(Alle Brawler bereits freigeschaltet)")
+		rewards.push_front({"kind": "gems", "amount": gems, "text": "%d Edelsteine" % gems, "sub": "", "color": Color(0.35, 1.0, 0.55)})
+	if coins > 0:
+		data.coins += coins
+		rewards.push_front({"kind": "coins", "amount": coins, "text": "%d Münzen" % coins, "sub": "", "color": Color(1.0, 0.85, 0.25)})
 	save_game()
 	return rewards
+
+func _roll_locked_brawler() -> Dictionary:
+	var locked: Array = brawlers.filter(func(b): return not is_unlocked(b.id))
+	if locked.is_empty():
+		return {}
+	var total := 0.0
+	for b in locked:
+		total += BrawlersData.rarity_weight(b.rarity)
+	var x := randf() * total
+	for b in locked:
+		x -= BrawlersData.rarity_weight(b.rarity)
+		if x <= 0.0:
+			return b
+	return locked[-1]
+
+func _roll_skin() -> Dictionary:
+	var pool: Array = []
+	for b in brawlers:
+		if not is_unlocked(b.id):
+			continue
+		for sk in b.get("skins", []):
+			if not owns_skin(sk.id):
+				pool.append({"brawler": b, "skin": sk})
+	return pool[randi() % pool.size()] if pool.size() > 0 else {}
+
+## Münzen für das Training (nach Schaden), max. 60 pro Runde.
+func award_training(damage: float) -> int:
+	var coins := int(min(60.0, damage / 1500.0))
+	data.coins += coins
+	save_game()
+	return coins
 
 # ------------------------------------------------------------------ Sound (synthetisch)
 func play_sfx(name: String, volume := 1.0, pitch := 1.0) -> void:

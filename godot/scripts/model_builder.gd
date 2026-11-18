@@ -188,10 +188,13 @@ static func build(look: Dictionary) -> Dictionary:
 	var leg_l := _limb(root, robe.darkened(0.2))
 	var leg_r := _limb(root, robe.darkened(0.2))
 
+	var size: float = look.get("size", 1.0)
+	root.scale = Vector3.ONE * size
 	var rig := {"root": root, "body": body, "head": head, "hand_l": hand_l, "hand_r": hand_r,
 		"weapon": weapon, "foot_l": foot_l, "foot_r": foot_r, "cape": cape, "tip": tip, "height": 1.95,
 		"shoulder_l": shoulder_l, "shoulder_r": shoulder_r, "hip_l": hip_l, "hip_r": hip_r,
 		"arm_l": arm_l, "arm_r": arm_r, "leg_l": leg_l, "leg_r": leg_r}
+	rig["height"] = 1.95 * size
 	return rig
 
 static func _limb(parent: Node3D, color: Color) -> MeshInstance3D:
@@ -235,6 +238,19 @@ static func _face(head: Node3D, look: Dictionary, dark: Color, white: Color) -> 
 		for i in range(-3, 4):
 			part(head, "box", Vector3(i * 0.05, -0.22, -0.42), Vector3(0.035, 0.08, 0.03), bone.darkened(0.3), Vector3.ZERO, false)
 		return
+	if look.face == "goggles":
+		part(head, "torus", Vector3(0, 0.08, -0.05), Vector3(0.95, 0.5, 0.92), Color(0.25, 0.22, 0.2), Vector3(-8, 0, 0), false)
+		for side in [-1, 1]:
+			part(head, "cyl", Vector3(0.16 * side, 0.06, -0.4), Vector3(0.24, 0.08, 0.24), Color(0.35, 0.3, 0.25), Vector3(90, 0, 0))
+			part(head, "cyl", Vector3(0.16 * side, 0.06, -0.445), Vector3(0.18, 0.02, 0.18), Color(0.55, 0.85, 1.0), Vector3(90, 0, 0), false)
+		part(head, "sphere", Vector3(0, -0.2, -0.39), Vector3(0.18, 0.08, 0.05), Color(0.45, 0.12, 0.15), Vector3.ZERO, false)
+		return
+	if look.face == "visor":
+		part(head, "box", Vector3(0, 0.05, -0.4), Vector3(0.62, 0.16, 0.1), Color(0.15, 0.2, 0.3))
+		part(head, "box", Vector3(0, 0.06, -0.455), Vector3(0.52, 0.06, 0.02), look.eye, Vector3.ZERO, false)
+		part(head, "sphere", Vector3(0, -0.2, -0.38), Vector3(0.14, 0.05, 0.04), Color(0.3, 0.3, 0.4), Vector3.ZERO, false)
+		return
+	var happy: bool = look.face == "happy"
 	for side in [-1, 1]:
 		var e := Vector3(0.16 * side, 0.02, -0.37)
 		part(head, "sphere", e, Vector3(0.18, 0.24, 0.08), white, Vector3(0, 0, 0), false)
@@ -242,13 +258,41 @@ static func _face(head: Node3D, look: Dictionary, dark: Color, white: Color) -> 
 		part(head, "sphere", e + Vector3(-0.01 * side, -0.03, -0.05), Vector3(0.06, 0.08, 0.03), Color(0.03, 0.03, 0.06), Vector3.ZERO, false)
 		part(head, "sphere", e + Vector3(0.025, 0.05, -0.065), Vector3(0.05, 0.05, 0.02), white, Vector3.ZERO, false)
 		part(head, "sphere", e + Vector3(-0.03, -0.06, -0.065), Vector3(0.025, 0.025, 0.01), white, Vector3.ZERO, false)
-		part(head, "box", e + Vector3(0.01 * side, 0.17, -0.02), Vector3(0.2, 0.045, 0.04), look.hair.darkened(0.45), Vector3(0, 0, -20 * side), false)
+		part(head, "box", e + Vector3(0.01 * side, 0.17 + (0.03 if happy else 0.0), -0.02), Vector3(0.2, 0.045, 0.04), look.hair.darkened(0.45), Vector3(0, 0, (8 if happy else -20) * side), false)
 	# Mund (entschlossenes Grinsen) + Nase
-	part(head, "sphere", Vector3(0.04, -0.2, -0.39), Vector3(0.16, 0.06, 0.04), Color(0.45, 0.12, 0.15), Vector3(0, 0, 8), false)
+	if happy:
+		part(head, "sphere", Vector3(0, -0.19, -0.38), Vector3(0.2, 0.1, 0.05), Color(0.45, 0.12, 0.15), Vector3.ZERO, false)
+		part(head, "sphere", Vector3(0, -0.22, -0.395), Vector3(0.1, 0.04, 0.03), Color(1.0, 0.5, 0.55), Vector3.ZERO, false)
+	else:
+		part(head, "sphere", Vector3(0.04, -0.2, -0.39), Vector3(0.16, 0.06, 0.04), Color(0.45, 0.12, 0.15), Vector3(0, 0, 8), false)
+	if look.get("beard", false):
+		part(head, "sphere", Vector3(0, -0.3, -0.24), Vector3(0.62, 0.36, 0.42), look.hair)
 	part(head, "sphere", Vector3(0, -0.07, -0.42), Vector3(0.05, 0.04, 0.04), look.skin.darkened(0.08), Vector3.ZERO, false)
 
 static func _hair(head: Node3D, look: Dictionary) -> void:
 	var hc: Color = look.hair
+	var hat: Color = look.get("hat", look.trim)
+	match look.hair_style:
+		"bald":
+			part(head, "sphere", Vector3(0, 0.3, 0.12), Vector3(0.5, 0.2, 0.4), hc)
+			return
+		"cap":
+			part(head, "sphere", Vector3(0, 0.0, 0.08), Vector3(0.9, 0.6, 0.85), hc)
+			part(head, "sphere", Vector3(0, 0.2, 0.0), Vector3(0.94, 0.62, 0.92), hat)
+			part(head, "cyl", Vector3(0, 0.2, -0.42), Vector3(0.6, 0.05, 0.42), hat.darkened(0.2), Vector3(-10, 0, 0))
+			part(head, "sphere", Vector3(0, 0.5, 0.0), Vector3.ONE * 0.1, look.trim, Vector3.ZERO, false)
+			return
+		"helmet":
+			part(head, "sphere", Vector3(0, 0.12, 0.02), Vector3(1.0, 0.82, 0.98), hc)
+			part(head, "torus", Vector3(0, 0.02, 0.0), Vector3(1.05, 0.6, 1.0), hc.darkened(0.25), Vector3.ZERO, false)
+			part(head, "cyl", Vector3(0, 0.52, 0.0), Vector3(0.12, 0.12, 0.12), look.trim)
+			return
+		"wizard":
+			part(head, "sphere", Vector3(0, 0.0, 0.1), Vector3(0.92, 0.75, 0.88), hc)
+			part(head, "cyl", Vector3(0, 0.3, 0.0), Vector3(1.25, 0.05, 1.25), hat)
+			part(head, "cone", Vector3(0, 0.68, 0.05), Vector3(0.7, 0.8, 0.7), hat, Vector3(-12, 0, 8))
+			part(head, "cyl", Vector3(0, 0.36, 0.0), Vector3(0.72, 0.1, 0.72), look.trim, Vector3.ZERO, false)
+			return
 	part(head, "sphere", Vector3(0, 0.12, 0.05), Vector3(0.94, 0.72, 0.9), hc)
 	# Große, gebündelte Stacheln
 	var spikes := 13
@@ -293,6 +337,26 @@ static func _weapon(w: Node3D, look: Dictionary, dark: Color) -> Node3D:
 			part(w, "cone", Vector3(0, 0.03, -1.31), Vector3(0.07, 0.18, 0.22), blade, Vector3(-90, 0, 0))
 			for i in 4:
 				part(w, "torus", Vector3(0, -0.05 - i * 0.07, 0.2 + i * 0.03), Vector3.ONE * 0.15, Color(0.65, 0.65, 0.7), Vector3(0, 90 * (i % 2), 90), false)
+		"pistol":
+			part(w, "box", Vector3(0, 0.07, -0.2), Vector3(0.1, 0.12, 0.38), Color(0.35, 0.35, 0.42))
+			part(w, "box", Vector3(0, -0.04, -0.06), Vector3(0.09, 0.18, 0.1), trim, Vector3(15, 0, 0))
+			part(w, "cyl", Vector3(0, 0.07, -0.4), Vector3(0.07, 0.06, 0.07), Color(1, 0.8, 0.3), Vector3(90, 0, 0), false)
+		"shotgun":
+			for x in [-0.04, 0.04]:
+				part(w, "cyl", Vector3(x, 0.07, -0.32), Vector3(0.08, 0.6, 0.08), Color(0.3, 0.3, 0.36), Vector3(90, 0, 0))
+			part(w, "box", Vector3(0, 0.03, 0.05), Vector3(0.12, 0.14, 0.3), Color(0.55, 0.32, 0.18), Vector3(10, 0, 0))
+		"bomb":
+			part(w, "sphere", Vector3(0, 0.12, -0.1), Vector3.ONE * 0.34, Color(0.15, 0.15, 0.2))
+			part(w, "cyl", Vector3(0, 0.32, -0.1), Vector3(0.04, 0.1, 0.04), Color(0.85, 0.75, 0.5), Vector3.ZERO, false)
+			part(w, "sphere", Vector3(0, 0.39, -0.1), Vector3.ONE * 0.08, Color(1, 0.7, 0.2), Vector3.ZERO, false)
+		"staff":
+			part(w, "cyl", Vector3(0, 0.25, -0.05), Vector3(0.06, 1.0, 0.06), Color(0.5, 0.32, 0.2), Vector3(12, 0, 0))
+			part(w, "sphere", Vector3(0, 0.78, -0.16), Vector3.ONE * 0.24, blade)
+			part(w, "torus", Vector3(0, 0.78, -0.16), Vector3.ONE * 0.36, trim, Vector3(90, 0, 0), false)
+		"hammer":
+			part(w, "cyl", Vector3(0, 0.25, -0.08), Vector3(0.07, 0.9, 0.07), Color(0.5, 0.35, 0.22), Vector3(20, 0, 0))
+			part(w, "rbox", Vector3(0, 0.66, -0.25), Vector3(0.5, 0.32, 0.32), blade, Vector3(20, 0, 0))
+			part(w, "box", Vector3(0, 0.66, -0.25), Vector3(0.52, 0.08, 0.34), trim, Vector3(20, 0, 0), false)
 		_:
 			part(w, "cyl", Vector3(0, 0, 0.09), Vector3(0.065, 0.28, 0.065), Color(0.85, 0.85, 0.9), Vector3(90, 0, 0))
 			part(w, "box", Vector3(0, 0, -0.08), Vector3(0.22, 0.07, 0.05), trim)
