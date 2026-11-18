@@ -1,0 +1,78 @@
+# ANIME BRAWL – ULTIMATE CLASH
+
+A playable 3D anime arena brawler for the browser, phone or desktop: 3v3 top-down
+fights with 50 fighters from Jujutsu Kaisen, Dragon Ball, Naruto, Bleach and One Piece. The
+centrepiece is the **transformation system**. Every fighter changes model, moveset, stats and
+playstyle when transformed, and seven fighters have a second stage (e.g. Goku: Super Saiyan Blue →
+Ultra Instinct, Ichigo: True Bankai → Horn of Salvation).
+
+> Non-commercial **fan prototype**. All characters belong to their respective rights holders.
+> No original assets, music or animations are used. Models, effects, sounds and music are all
+> generated procedurally in code. Game modes and systems are inspired by the 3v3 arena-brawler
+> genre; names and visuals are original.
+
+## Start
+
+```bash
+cd anime-brawl
+npm install
+npm run dev        # http://localhost:5173 (also reachable on your local network → phone)
+npm run build      # production build in dist/ (static, can be hosted anywhere)
+npm run check:data # validates all 50 character kits
+```
+
+**Desktop:** WASD to move · mouse to aim · left click to attack · right click / space for Super · E for gadget · F/Q to transform · 1–4 for pins · Esc to leave.
+**Touch:** left joystick to move · drag the attack/Super button to aim manually, tap it for auto-aim · gadget and FORM buttons.
+
+## What's included
+
+| Area | Status |
+|---|---|
+| 50 fighters (10 per anime) | ✅ each with its own main attack, Super, 2 gadgets, 2 passive powers, stats, rarity, description, play style and sound profile |
+| Transformations | ✅ all 50 change model, moveset, stats and passives; 7 two-stage forms; cinematic with slow motion, zoom and banner |
+| Unique mechanics | ✅ e.g. Infinity (projectiles slow down), Boogie Woogie (swapping places), Minato's teleport markers, Law's ROOM, Gear 5 grab, Hakai execution, Future Sight, Mahoraga adaptation, Black Flash, Ratio 7:3, domain expansions |
+| Modes | ✅ Crystal Rush, Spirit Ball, Survival (solo/duo), Vault Heist, Zone Control, Knockout, Boss Fight (co-op), Anime Tournament (3 rounds with rotating rules), Training |
+| Arenas | ✅ 5 themes (Shibuya, Namek, Konoha, Soul Society, Wano) with bushes, water, crates, walls that Supers can destroy, and decoration |
+| Combat | ✅ ammo system, auto-aim and manual aim, bushes, line of sight, knockback, stun, burn, slow, shields, summons, domains, traps, temporary walls |
+| Bots | ✅ A* pathfinding, mode objectives, leading shots, dodging, use of Super, gadget and transformation |
+| Lobby & menus | ✅ 3D lobby (character reacts to taps and can be rotated), fighter collection with filters, detail page with 3D model, stats, ability and form preview, training test |
+| Progression | ✅ levels 1–11 (coins + power points), gadgets, passive powers, gears, Overdrive, skins, per-fighter trophies, trophy road, mastery, season reset |
+| Shop & Battle Pass | ✅ daily offers, Soul Orbs, skins, fighters, pins/sprays/emotes/effects, free and premium track (premium bought with gems) |
+| Profile & social | ✅ profile, titles, badges, stats, friends, team invites, clubs with club chat, leaderboards |
+| Saving | ✅ localStorage (`animebrawl.save.v1`) |
+| Sound | ✅ every sound effect and both music loops are synthesised live with WebAudio |
+
+## Honest limitations
+
+- **Online multiplayer is not implemented** — there is no backend. Matches run locally with bots.
+  The simulation is driven by input commands; `src/net/transport.js` describes the protocol and has
+  a prepared `WebSocketTransport` for an authoritative server.
+- **Friends, clubs, club chat and leaderboards** are populated by generated bot players (labelled as such in-game).
+- **Real-money purchases are disabled.** Gems come from the trophy road, the pass, orbs and gifts.
+- Models are stylised, procedurally built chibi figures (smooth capsule/lathe forms, cel shading, ink
+  outlines, painted faces). There are no hand-sculpted or animated 3D assets. Animations are procedural.
+- There is one map layout per mode; variety comes from 5 visual themes.
+- No voice lines.
+
+## Project structure
+
+```
+src/
+  data/roster/*.js   50 character definitions (pure data, one file per anime)
+  data/maps.js       map layouts (mirrored for fairness), themes, modes
+  data/progression.js upgrade costs, trophy road, pass, quests, gears, cosmetics
+  game/actions.js    ability building blocks (projectile, cone, dash, beam, aoe, nova, domain, summon, …)
+  game/specials.js   unique mechanics (Gojo, Todo, Minato, Law, Gear 5, …)
+  game/fighter.js    fighter/minion logic, statuses, transformations
+  game/world.js      match simulation, damage pipeline, zones, camera, cinematics
+  game/modes/        all game modes + boss
+  game/ai.js         bot AI
+  game/input.js, hud.js  controls and battle HUD
+  render/            cel-shading materials, models, hair, faces, animation, VFX, arena, lobby stage
+  ui/                app shell, screens, icons
+  core/              save state/economy, audio
+  net/transport.js   network interface
+dev/gallery.html     character gallery for visual checks (/dev/gallery.html?ids=goku,luffy&form=trans)
+```
+
+Debug URL parameters: `?autoplay=1` (AI plays the player), `?sim=N` (N simulation steps per frame without rendering).

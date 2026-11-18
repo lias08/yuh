@@ -3,5 +3,5 @@ export default defineConfig({
   base: './',
   build: { target: 'es2020', chunkSizeWarningLimit: 2000 },
   server: { host: true },
-  optimizeDeps: { include: ['three', 'three/examples/jsm/geometries/RoundedBoxGeometry.js'] },
+  optimizeDeps: { include: ['three', 'three/examples/jsm/geometries/RoundedBoxGeometry.js', 'three/examples/jsm/utils/BufferGeometryUtils.js'] },
 });

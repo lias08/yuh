@@ -377,7 +377,7 @@ img[data-p] { opacity: 0; transition: opacity .3s; } img[data-p].ready { opacity
 @keyframes countIn { 0% { opacity: 0; transform: translate(-50%, -50%) scale(2.5); } 25% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -50%) scale(.8); } }
 .hud-vig { inset: 0; background: radial-gradient(circle, transparent 55%, rgba(255,20,40,.45)); opacity: 0; pointer-events: none; } .hud-vig.on { animation: vig .5s; } @keyframes vig { 0% { opacity: 1; } 100% { opacity: 0; } }
 .hud-flash { inset: 0; opacity: 0; pointer-events: none; mix-blend-mode: screen; } .hud-flash.on { animation: vig .6s; }
-.hud-status { left: 50%; top: calc(76px + var(--safe-t)); transform: translateX(-50%); pointer-events: none; }
+.hud-status { left: 50%; top: calc(96px + var(--safe-t)); transform: translateX(-50%); pointer-events: none; }
 .formbar { width: 200px; text-align: center; } .formbar .fname { font-family: var(--disp); font-size: 14px; text-shadow: 0 2px 0 #000; } .formbar .ftrack { height: 10px; border-radius: 5px; background: rgba(0,0,0,.6); border: 2px solid #000; overflow: hidden; } .formbar .ffill { height: 100%; background: linear-gradient(90deg, #ff8a2a, #ffd23f); }
 .formbar.ready .ftrack { box-shadow: 0 0 12px #ffd23f; animation: pulse .8s infinite; }
 
@@ -426,3 +426,10 @@ img[data-p] { opacity: 0; transition: opacity .3s; } img[data-p].ready { opacity
 .portrait .side.left { top: 38%; } .portrait .side.right { top: 38%; } .portrait .bottombar { flex-wrap: wrap; } .portrait .play-btn { flex-basis: 100%; }
 .portrait .topbar { flex-wrap: wrap; } .portrait .topbar .curbar { order: 5; width: 100%; justify-content: flex-end; }
 .portrait .tc-left { width: 50%; top: 30%; }
+/* portrait / small-screen HUD refinements */
+@media (max-height: 520px), (max-width: 520px) { .hud-status { display: none; } .hud-pins button { width: 30px; height: 30px; font-size: 15px; } }
+.portrait .hud-pins { display: none; }
+.portrait .hud-top { top: calc(56px + var(--safe-t)); transform: translateX(-50%) scale(.85); }
+.portrait .hud-feed { top: calc(110px + var(--safe-t)); }
+.portrait .char-info { top: calc(118px + var(--safe-t)); }
+.portrait .ann .t { font-size: 34px; } .portrait .tban .fn { font-size: 30px; }

@@ -168,7 +168,7 @@ export function buildCharacter(look, opts = {}) {
   const headG = new THREE.Group(); headG.position.y = H * 1.05 + B.head * 0.92; torso.add(headG);
   const faceDesc = { skin, eyes: look.eyes || {}, mouth: look.mouth, marks: look.marks || [], brows: look.brows, browColor: look.browColor ?? (look.hair?.color ?? 0x2a1a14), beardColor: look.beardColor, maskColor: look.maskColor, angry: look.angry, noBlush: look.noBlush };
   const faceM = M(0xffffff, { map: faceTexture(faceDesc), rim: 0.3 });
-  const head = ink(new THREE.SphereGeometry(B.head, 32, 22), faceM, 0.022);
+  const head = ink(new THREE.SphereGeometry(B.head, 28, 18), faceM, 0.022);
   head.scale.set(1, 0.96, 0.98);
   headG.add(head);
   if (!extras.has('noEars')) for (const s of [-1, 1]) {
@@ -290,9 +290,9 @@ export function buildCharacter(look, opts = {}) {
   }
   if (ex('featherCoat')) {
     const fm = M(look.featherColor ?? 0xff5fae, { rim: 0.6 });
-    for (let i = 0; i < 16; i++) {
-      const a = (i / 15) * Math.PI * 1.6 + Math.PI * 0.2 + Math.PI * 0.5;
-      const f = ink(new THREE.SphereGeometry(0.11, 10, 8), fm, 0.01);
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 13) * Math.PI * 1.25 + Math.PI * 0.875;
+      const f = ink(new THREE.SphereGeometry(0.1, 10, 8), fm, 0.01);
       f.position.set(Math.cos(a) * W * 1.05, H * (0.95 + (i % 2) * 0.05), Math.sin(a) * W * 0.85 - 0.02);
       if (Math.sin(a) > 0.6) f.position.z -= 0.0;
       torso.add(f);

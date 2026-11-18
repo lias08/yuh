@@ -137,7 +137,7 @@ export function buildArena(scene, grid, theme, seed = 1) {
     parts.wallTop = new InstGroup(group, new RoundedBoxGeometry(1.0, 0.18, 1.0, 2, 0.06), topMat, nWall, 0.02, true);
   } else {
     const h = style === 'building' ? 1.1 : 0.9;
-    parts.wall = new InstGroup(group, new RoundedBoxGeometry(0.98, h, 0.98, 3, 0.12), wallMat, nWall, 0.025, true);
+    parts.wall = new InstGroup(group, new RoundedBoxGeometry(0.98, h, 0.98, 2, 0.12), wallMat, nWall, 0.025, true);
     if (style === 'house') {
       const roof = new THREE.ConeGeometry(0.76, 0.36, 4, 1); roof.rotateY(Math.PI / 4);
       parts.wallTop = new InstGroup(group, roof, topMat, nWall, 0.02, true);
@@ -148,8 +148,8 @@ export function buildArena(scene, grid, theme, seed = 1) {
   const bushMat = toon(theme.bush, { rim: 0.5, rimColor: lighten(theme.bush, 0.6) });
   bushMat.transparent = true;
   const bushMat2 = toon(theme.bush2, { rim: 0.5 }); bushMat2.transparent = true;
-  parts.bush = new InstGroup(group, new THREE.IcosahedronGeometry(0.42, 2), bushMat, nBush * 3, 0.018);
-  parts.bush2 = new InstGroup(group, new THREE.IcosahedronGeometry(0.34, 2), bushMat2, nBush * 2, 0.018);
+  parts.bush = new InstGroup(group, new THREE.IcosahedronGeometry(0.42, 1), bushMat, nBush * 3, 0.018);
+  parts.bush2 = new InstGroup(group, new THREE.IcosahedronGeometry(0.34, 1), bushMat2, nBush * 2, 0);
   const crateGeo = new RoundedBoxGeometry(0.86, 0.86, 0.86, 2, 0.08);
   parts.crate = new InstGroup(group, crateGeo, xray(toon(theme.crate, { rim: 0.4, unique: true })), nCrate, 0.022, true);
   parts.crateBand = new InstGroup(group, new RoundedBoxGeometry(0.9, 0.16, 0.9, 1, 0.04), toon(darken(theme.crate, 0.45)), nCrate * 2, 0);
@@ -203,6 +203,7 @@ export function buildArena(scene, grid, theme, seed = 1) {
   // rotate rope bars to lie horizontally
   parts.ropeBar.mesh.geometry.rotateZ(Math.PI / 2);
   for (const k in parts) parts[k].finish();
+  parts.bush.mesh.castShadow = false; parts.bush2.mesh.castShadow = false; parts.crateBand.mesh.castShadow = false; parts.ropeBar.mesh.castShadow = false;
 
   // ---------- decorative props around the arena ----------
   const props = new THREE.Group(); group.add(props);

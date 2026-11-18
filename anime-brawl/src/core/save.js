@@ -47,10 +47,22 @@ export const Save = {
     // migrate: make sure every unlocked brawler has all fields
     for (const id in this.data.brawlers) this.data.brawlers[id] = { ...newBrawler(), ...this.data.brawlers[id] };
     this.refreshDaily();
+    this.checkSeason();
     return this.data;
   },
   save() { try { localStorage.setItem(KEY, JSON.stringify(this.data)); } catch { /* storage may be unavailable (private mode) */ } },
   reset() { try { localStorage.removeItem(KEY); } catch {} this.data = defaults(); this.refreshDaily(); this.save(); },
+  /** Season end: trophies above 500 per brawler are halved (like the genre), rewards in coins. */
+  checkSeason() {
+    const d = this.data;
+    if (Date.now() < d.seasonEnd) return;
+    let reward = 0;
+    for (const b of Object.values(d.brawlers)) if (b.trophies > 500) { const lost = Math.floor((b.trophies - 500) / 2); b.trophies -= lost; reward += lost; }
+    d.coins += reward;
+    d.seasonEnd = Date.now() + 1000 * 60 * 60 * 24 * 28;
+    note(reward ? `Saison beendet! ${reward} Trophäen wurden in ${reward} Münzen umgewandelt.` : 'Eine neue Saison hat begonnen!');
+    this.save();
+  },
   refreshDaily() {
     const d = this.data, day = new Date().toISOString().slice(0, 10);
     if (d.quests.day !== day) { d.quests = { day, list: genQuests(day) }; }

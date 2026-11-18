@@ -134,7 +134,7 @@ export function portrait(renderer, def, skin = null, form = 'base') {
   pScene.add(group);
   const h = rig.height;
   const headY = rig.type === 'dragon' ? 1.0 : rig.type === 'beast' ? 0.6 : h * 0.78;
-  const dist = rig.type === 'dragon' ? 4.2 : h * 1.5 + 0.6;
+  const dist = rig.type === 'dragon' ? 4.4 : h * 1.65 + 0.85;
   pCam.position.set(0.35, headY + 0.1, dist); pCam.lookAt(0, headY - 0.05, 0);
   const prevTarget = renderer.getRenderTarget();
   const prevClear = renderer.getClearAlpha();

@@ -6,6 +6,7 @@
 //  bun / tail – topknot, ponytail
 // az: 0 = front, +90 = character's left side (x+), 180 = back. el: 0 = equator, 90 = crown.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 const D = Math.PI / 180;
 
@@ -199,5 +200,29 @@ export function buildHair(style, r, mat, mat2, outlineFn) {
       m.position.set(0, r * 1.1, -r * 0.35); m.rotation.x = -0.9; g.add(m);
     }
   }
-  return g;
+  return mergeHair(g, outlineFn);
+}
+
+/** Collapse all hair parts into one mesh (+ one outline) per material. */
+function mergeHair(g, outlineFn) {
+  const buckets = new Map();
+  for (const m of g.children) {
+    if (!m.isMesh) continue;
+    m.updateMatrix();
+    let geo = m.geometry.clone();
+    if (!geo.index) geo = geo.toNonIndexed ? geo : geo;
+    geo.applyMatrix4(m.matrix);
+    for (const k of Object.keys(geo.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'uv') geo.deleteAttribute(k);
+    if (!geo.index) { const idx = []; for (let i = 0; i < geo.attributes.position.count; i++) idx.push(i); geo.setIndex(idx); }
+    if (!buckets.has(m.material)) buckets.set(m.material, []);
+    buckets.get(m.material).push(geo);
+  }
+  const out = new THREE.Group();
+  for (const [mat, list] of buckets) {
+    const merged = mergeGeometries(list, false);
+    if (!merged) continue;
+    out.add(outlineFn(merged, mat, 0.013));
+    list.forEach(x => x.dispose());
+  }
+  return out;
 }
