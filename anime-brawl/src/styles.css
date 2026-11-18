@@ -455,3 +455,48 @@ img[data-p] { opacity: 0; transition: opacity .3s; } img[data-p].ready { opacity
 .screen-battle ~ #hud .hud-feed, .hud:has(.tr-panel) .hud-feed { top: auto; bottom: calc(260px + var(--safe-b)); }
 .pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 8px; max-height: 60vh; overflow-y: auto; touch-action: pan-y; }
 .pick-grid button { border-radius: 12px; background: #241e50; padding: 4px; font-size: 10px; } .pick-grid img { width: 100%; aspect-ratio: 1; }
+
+/* ---------------- accounts ---------------- */
+.acc-screen { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 28px; padding: 16px; background: radial-gradient(circle at 50% 30%, rgba(90,60,200,.55), rgba(10,8,28,.96) 70%); overflow-y: auto; flex-wrap: wrap; }
+.acc-logo { font-family: var(--disp); font-size: 46px; text-align: center; line-height: 1; background: linear-gradient(180deg, #fff 30%, #ffd23f 70%, #ff8a2a); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 4px 0 #2a1458); }
+.acc-logo small { display: block; font-size: 17px; letter-spacing: 5px; margin-top: 4px; }
+.acc-card { width: min(420px, 100%); background: linear-gradient(180deg, #3a3280, #221c50); border: 3px solid rgba(255,255,255,.15); border-radius: 24px; padding: 18px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.acc-card h2 { font-size: 24px; margin-bottom: 10px; text-align: center; } .acc-sub { text-align: center; color: var(--mut); margin: 0 0 10px; }
+.acc-list { display: flex; flex-direction: column; gap: 8px; max-height: 34vh; overflow-y: auto; touch-action: pan-y; }
+.acc-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 14px; background: rgba(0,0,0,.25); border: 2px solid rgba(255,255,255,.08); text-align: left; min-height: 56px; }
+.acc-item img { width: 44px; height: 44px; border-radius: 10px; background: #241e50; } .acc-item div { flex: 1; } .acc-item small { display: block; color: var(--mut); font-size: 12px; } .acc-item > .ico { width: 22px; height: 22px; color: var(--yellow); }
+.acc-item.owner { border-color: var(--yellow); background: linear-gradient(90deg, rgba(255,210,63,.18), rgba(0,0,0,.25)); }
+.acc-or { text-align: center; color: var(--mut); margin: 10px 0; font-size: 13px; }
+.acc-new { display: flex; flex-direction: column; gap: 8px; } .acc-new .inp { width: 100%; font-size: 17px; padding: 13px 14px; }
+.acc-err { min-height: 18px; color: #ff8a9a; font-size: 13px; } .acc-err.ok { color: var(--yellow); }
+.acc-note { display: flex; gap: 8px; color: var(--mut); font-size: 12px; margin: 12px 0 0; font-weight: 600; }
+.adm-badge { background: linear-gradient(90deg, #ffd23f, #ff8a2a); color: #2a1a08; padding: 4px 10px; border-radius: 10px; font-size: 13px; font-family: var(--disp); }
+.adminbtn { font-size: 22px; background: linear-gradient(180deg, #ffd23f, #c88a10) !important; }
+.admin .sgrid { padding-bottom: 30px; }
+.adm-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; font-size: 13px; } .adm-row span { flex: 1; }
+.inp.sm { flex: 0 1 140px; min-width: 70px; padding: 8px 10px; font-size: 14px; }
+.adm-tg { display: flex !important; align-items: center; gap: 8px; justify-content: flex-start !important; font-size: 14px; margin: 6px 0; } .adm-tg input { width: 20px; height: 20px; accent-color: var(--yellow); }
+.adm-accs, .adm-codes { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.adm-acc, .adm-code { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; background: rgba(0,0,0,.25); border-radius: 12px; padding: 8px 10px; } .adm-acc div { flex: 1; min-width: 140px; } .adm-acc small, .adm-code small { display: block; color: var(--mut); font-size: 11px; } .adm-code b { flex: 1; }
+.admin select { width: 100%; margin-bottom: 6px; }
+
+/* ---------------- mobile battle layout: keep the arena clear ---------------- */
+html, body { overscroll-behavior: none; -webkit-touch-callout: none; }
+* { -webkit-touch-callout: none; }
+input, textarea { -webkit-user-select: text; user-select: text; }
+.hud-pins { display: flex; flex-direction: row; align-items: center; gap: 4px; }
+.hud-pins .pin-list { display: none; gap: 4px; } .hud-pins.open .pin-list { display: flex; animation: uiIn .15s; }
+.hud-pins .pin-toggle { opacity: .85; }
+.hud-fps { right: calc(12px + var(--safe-r)); top: calc(8px + var(--safe-t)); background: rgba(0,0,0,.6); padding: 2px 8px; border-radius: 8px; font-size: 12px; pointer-events: none; z-index: 5; }
+.touch .tc-btn .key, .touch .desk-only { display: none !important; }
+html:not(.touch) .touch-only { display: none; }
+.touch .hud-status { display: none; }
+.touch .hud-feed, .touch .hud:has(.tr-panel) .hud-feed { top: calc(58px + var(--safe-t)); bottom: auto; right: auto; left: 50%; transform: translateX(-50%); align-items: center; opacity: .9; }
+.touch .kf { font-size: 11px; padding: 2px 8px; }
+.touch .hud-exit { width: 34px; height: 34px; font-size: 15px; opacity: .75; }
+.touch .hud-pins { left: calc(52px + var(--safe-l)); } .touch .hud-pins button { width: 34px; height: 34px; font-size: 16px; }
+.touch .ann .t { font-size: 34px; } .touch .ann .s { font-size: 13px; } .touch .hud-ann { top: 18%; }
+.touch .tban { height: 84px; } .touch .tban .fn { font-size: 30px; }
+.touch .tr-dps { top: auto; bottom: calc(10px + var(--safe-b)); font-size: 11px; opacity: .85; }
+.touch .ubar .nm { font-size: 10px; }
+.touch .hud-count { font-size: 76px; }

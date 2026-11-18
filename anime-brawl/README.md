@@ -26,7 +26,7 @@ npm run check:data # validates all 50 character kits
 
 ## Android APK
 
-A signed release APK is in `release/AnimeBrawl-UltimateClash-v1.0.1.apk` (≈3.9 MB, Android 7+ / API 24+, landscape, fullscreen, fully offline).
+A signed release APK is in `release/AnimeBrawl-UltimateClash-v1.1.0.apk` (≈3.9 MB, Android 7+ / API 24+, landscape, fullscreen, fully offline).
 Install it by copying it to your phone and opening it (allow "install from unknown sources").
 
 Build it yourself (needs JDK 21 and the Android SDK, `ANDROID_HOME` set):
@@ -35,6 +35,13 @@ npm run android:sync                      # vite build + copy into android/
 cd android && ./gradlew assembleRelease   # → android/app/build/outputs/apk/release/app-release.apk
 ```
 For a signed build, create `android/keystore.properties` (storeFile, storePassword, keyAlias, keyPassword). Without it Gradle produces an unsigned APK. The keystore is deliberately not in the repository.
+
+## Accounts & owner
+
+- On first launch you create an account (name + optional PIN). Every account has its own save on the device, and several accounts can share one phone.
+- Names are unique and case-insensitive; look-alikes such as `z1ias` or `ZLIAS` are blocked.
+- The first account named **`zlias`** becomes the **owner**: 👑 title, crown in the name and the **admin panel** (crown button in the lobby). The panel covers currencies, unlocks, editing fighters, match cheats (invulnerable, instant Super, bot strength, FPS), custom codes, managing the device's accounts and messages to all of them. The owner account needs a PIN and cannot be deleted or renamed.
+- ⚠ There is no server yet: uniqueness and ownership apply **per device**. Global names need a backend (`src/core/accounts.js` is the interface for one).
 
 ## Codes & training
 

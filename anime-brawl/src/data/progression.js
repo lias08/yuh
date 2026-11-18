@@ -85,6 +85,7 @@ export const SPRAYS = [
   { id: 'kanji', name: 'Kanji: Stärke', color: '#ff3a3a' }, { id: 'dragon', name: 'Drachenkugel', color: '#ffaa2a' }, { id: 'void', name: 'Unendliche Leere', color: '#6a5aff' },
 ];
 export const TITLES = {
+  owner: '👑 Besitzer', admin: 'Admin',
   rookie: 'Anfänger', jujutsu: 'Jujutsu-Zauberer', legend: 'Lebende Legende', hokage: 'Möchtegern-Hokage', captain: 'Kommandant', pirate: 'Piratenkönig', saiyan: 'Saiyajin-Elite', champion: 'Turnier-Champion',
 };
 export const EFFECTS = [

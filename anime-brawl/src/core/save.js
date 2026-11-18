@@ -5,7 +5,8 @@ import { ROSTER, BY_ID, RARITIES, skinsFor } from '../data/index.js';
 import { TROPHY_ROAD, PASS, QUEST_TEMPLATES, LEVEL_COST, MAX_LEVEL, PRICES, UNLOCK, GEARS, PINS, SPRAYS, TITLES, EFFECTS } from '../data/progression.js';
 import { ANIME } from '../data/index.js';
 
-const KEY = 'animebrawl.save.v1';
+import { Accounts, saveKey } from './accounts.js';
+let KEY = 'animebrawl.save.guest';
 const STARTERS = ['yuji', 'piccolo', 'hitsugaya'];
 
 const BOT_NAMES = ['Kaito', 'Sora', 'Rin', 'Haru', 'Yuki', 'Ren', 'Aoi', 'Mika', 'Taro', 'Nami', 'Kenji', 'Hana', 'Riku', 'Emi', 'Daiki', 'Saki', 'Shin', 'Yumi', 'Takeshi', 'Akira', 'Kira', 'Noa', 'Mei', 'Jin', 'Luca', 'Mila', 'Finn', 'Lea', 'Noah', 'Emma', 'Ben', 'Lina', 'Tom', 'Sara', 'Max', 'Ida', 'Leo', 'Zoe', 'Paul', 'Nina'];
@@ -16,14 +17,14 @@ export function botName(r) { return BOT_NAMES[Math.floor(r() * BOT_NAMES.length)
 
 function newBrawler() { return { level: 1, pp: 0, trophies: 0, highest: 0, gadgets: [], sps: [], gears: [], overdrive: false, skins: ['default'], skin: 'default', gadget: -1, sp: -1, gear: [], mastery: 0, wins: 0, unlockedAt: Date.now() }; }
 
-function defaults() {
+function defaults(name) {
   const r = seeded(Date.now());
   const brawlers = {};
   for (const id of STARTERS) brawlers[id] = newBrawler();
   const friends = Array.from({ length: 8 }, () => ({ name: botName(r), trophies: Math.floor(200 + r() * 3000), fav: ROSTER[Math.floor(r() * ROSTER.length)].id, online: r() < 0.6 }));
   return {
     v: 1,
-    player: { name: 'Spieler' + Math.floor(1000 + r() * 9000), icon: 'yuji', title: 'rookie', created: Date.now() },
+    player: { name: name || ('Spieler' + Math.floor(1000 + r() * 9000)), icon: 'yuji', title: 'rookie', created: Date.now() },
     coins: 400, gems: 80, pp: 60, credits: 0,
     brawlers, selected: 'yuji', mode: 'crystal',
     roadClaimed: [], pass: { season: PASS.season, xp: 0, premium: false, free: [], prem: [] },
@@ -41,9 +42,21 @@ function defaults() {
 
 export const Save = {
   data: null,
-  load() {
-    try { const raw = localStorage.getItem(KEY); this.data = raw ? { ...defaults(), ...JSON.parse(raw) } : defaults(); }
-    catch { this.data = defaults(); }
+  accountId: null,
+  /** load the save slot of an account (each account / device has its own) */
+  load(accountId = Accounts.db?.current) {
+    const acc = accountId ? Accounts.get(accountId) : null;
+    this.accountId = acc ? acc.id : null;
+    KEY = acc ? saveKey(acc.id) : 'animebrawl.save.guest';
+    try { const raw = localStorage.getItem(KEY); this.data = raw ? { ...defaults(acc?.name), ...JSON.parse(raw) } : defaults(acc?.name); }
+    catch { this.data = defaults(acc?.name); }
+    if (acc) {
+      this.data.player.name = acc.name;
+      const owner = Accounts.isOwner(acc.id);
+      this.data.owner = owner;
+      if (owner) { if (!this.data.cos.titles.includes('owner')) this.data.cos.titles.unshift('owner'); if (!this.data.ownerGreeted) { this.data.player.title = 'owner'; this.data.ownerGreeted = true; note('Willkommen, Besitzer! Das Admin-Panel findest du oben in der Lobby (Kronen-Symbol).'); } }
+      else { this.data.cos.titles = this.data.cos.titles.filter(t => t !== 'owner'); if (this.data.player.title === 'owner') this.data.player.title = 'rookie'; }
+    }
     // migrate: make sure every unlocked brawler has all fields
     for (const id in this.data.brawlers) this.data.brawlers[id] = { ...newBrawler(), ...this.data.brawlers[id] };
     this.refreshDaily();
@@ -54,7 +67,7 @@ export const Save = {
     if (this.data.infinite) { this.data.coins = this.data.gems = this.data.credits = 999999999; }
     try { localStorage.setItem(KEY, JSON.stringify(this.data)); } catch { /* storage may be unavailable (private mode) */ }
   },
-  reset() { try { localStorage.removeItem(KEY); } catch {} this.data = defaults(); this.refreshDaily(); this.save(); },
+  reset() { try { localStorage.removeItem(KEY); } catch {} const id = this.accountId; this.load(id); this.save(); },
   /** Season end: trophies above 500 per brawler are halved (like the genre), rewards in coins. */
   checkSeason() {
     const d = this.data;
@@ -78,7 +91,17 @@ export const Save = {
 export function redeemCode(code) {
   const c = String(code).trim();
   const d = Save.data;
-  if (c !== '67') return { ok: false, text: 'Ungültiger Code' };
+  if (c !== '67') {
+    const oc = Accounts.findCode(c);
+    if (!oc) return { ok: false, text: 'Ungültiger Code' };
+    if (oc.used.includes(Save.accountId)) return { ok: false, text: 'Diesen Code hast du schon eingelöst.' };
+    oc.used.push(Save.accountId); Accounts.persist();
+    const r = oc.reward || {};
+    if (r.coins) d.coins += r.coins; if (r.gems) d.gems += r.gems; if (r.credits) d.credits += r.credits;
+    if (r.brawler) unlockBrawler(r.brawler);
+    note(`Code ${oc.code} eingelöst!`); Save.save();
+    return { ok: true, text: `Code eingelöst: ${[r.coins && r.coins + ' Münzen', r.gems && r.gems + ' Juwelen', r.credits && r.credits + ' Credits', r.brawler && BY_ID[r.brawler]?.name].filter(Boolean).join(', ') || 'Belohnung erhalten'}` };
+  }
   for (const ch of ROSTER) {
     const b = d.brawlers[ch.id] || (d.brawlers[ch.id] = newBrawler());
     b.level = MAX_LEVEL; b.pp = Math.max(b.pp, 9999);
@@ -89,7 +112,7 @@ export function redeemCode(code) {
   d.infinite = true;
   d.coins = d.gems = d.credits = 999999999;
   d.pass.premium = true; d.pass.xp = Math.max(d.pass.xp, PASS.tiers * PASS.xpPerTier);
-  d.cos.pins = PINS.map(p => p.id); d.cos.sprays = SPRAYS.map(p => p.id); d.cos.titles = Object.keys(TITLES); d.cos.effects = EFFECTS.map(p => p.id);
+  d.cos.pins = PINS.map(p => p.id); d.cos.sprays = SPRAYS.map(p => p.id); d.cos.titles = [...new Set([...(d.owner ? ['owner'] : []), ...Object.keys(TITLES).filter(t => t !== 'owner' && t !== 'admin')])]; d.cos.effects = EFFECTS.map(p => p.id);
   d.cos.emotes = ['laugh', 'flex', 'bow'];
   note('Code 67 eingelöst: Alles freigeschaltet, unendlich Münzen, Juwelen und Credits!');
   Save.save();

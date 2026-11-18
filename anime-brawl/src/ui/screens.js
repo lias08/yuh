@@ -1,6 +1,8 @@
 // Menu screens. Each screen renders into app.ui and wires its own handlers.
 import { icon } from './icons.js';
 import { redeemCode } from '../core/save.js';
+import { Accounts } from '../core/accounts.js';
+import { accountsScreen, adminScreen } from './accountScreens.js';
 import { Save, bData, owned, totalTrophies, upgrade, upgradeCost, canUpgrade, buyItem, grant, rewardLabel, buyBrawler, openOrb, leaderboard, unreadNotes, note, seeded, botName, MAX_LEVEL, UNLOCK, PRICES, TROPHY_ROAD, PASS, GEARS } from '../core/save.js';
 import { ROSTER, BY_ID, RARITIES, ANIME, skinsFor } from '../data/index.js';
 import { MODES, THEMES, MAPS } from '../data/maps.js';
@@ -88,6 +90,7 @@ function lobby(app) {
       <div class="sp"></div>
       ${curBar()}
       <button class="icon-btn bell">${icon('bell')}${unread ? `<em class="badge">${unread}</em>` : ''}</button>
+      ${Accounts.isOwner() ? '<button class="icon-btn adminbtn" data-go="admin" title="Admin-Panel">👑</button>' : ''}
       <button class="icon-btn codebtn" title="Code einlösen">${icon('gadget')}</button>
       <button class="icon-btn" data-go="settings">${icon('settings')}</button>
     </header>
@@ -481,7 +484,7 @@ function profile(app) {
     <div class="pgrid">
       <div class="pcardx">
         <div class="pava">${pimg(app, d.player.icon, 'default', 'base', 'bigava')}<button class="btn tiny ghost chava">Avatar ändern</button></div>
-        <div class="pinfo"><h2>${esc(d.player.name)} <button class="btn tiny ghost rename">Umbenennen</button></h2>
+        <div class="pinfo"><h2>${esc(d.player.name)} ${Accounts.isOwner() ? '<span class="adm-badge">👑 Besitzer</span>' : '<button class="btn tiny ghost rename">Umbenennen</button>'}</h2>
           <div class="ptitle">Titel: <select class="seltitle">${d.cos.titles.map(t => `<option value="${t}" ${d.player.title === t ? 'selected' : ''}>${TITLES[t]}</option>`).join('')}</select></div>
           <div class="ptrophy">${icon('trophy')} <b>${fmt(totalTrophies())}</b> <small>Rekord ${fmt(Math.max(s.highest, totalTrophies()))}</small></div>
           <div class="pfav">Lieblingskämpfer: <b>${fav ? esc(BY_ID[fav[0]].name) : '—'}</b></div></div>
@@ -493,10 +496,10 @@ function profile(app) {
   hydrate(app);
   app.ui.querySelector('.back').onclick = () => app.show('lobby');
   app.ui.querySelector('.seltitle').onchange = (e) => { d.player.title = e.target.value; Save.save(); };
-  app.ui.querySelector('.rename').onclick = () => {
+  app.ui.querySelector('.rename')?.addEventListener('click', () => {
     const m = app.modal(`<h2>Name ändern</h2><input class="inp" maxlength="16" value="${esc(d.player.name)}"><button class="btn yellow ok">Speichern</button>`);
-    m.el.querySelector('.ok').onclick = () => { const v = m.el.querySelector('.inp').value.trim().slice(0, 16); if (v) { d.player.name = v; Save.save(); } m.close(); profile(app); };
-  };
+    m.el.querySelector('.ok').onclick = () => { const v = m.el.querySelector('.inp').value.trim(); const err = Accounts.rename(Save.accountId, v); if (err) { app.toast(err); return; } d.player.name = v; Save.save(); m.close(); profile(app); };
+  });
   app.ui.querySelector('.chava').onclick = () => {
     const m = app.modal(`<h2>Avatar wählen</h2><div class="avgrid">${Object.keys(d.brawlers).map(id => `<button data-id="${id}">${pimg(app, id)}</button>`).join('')}</div>`, { wide: true });
     hydrate(app, m.el);
@@ -596,15 +599,22 @@ function settings(app) {
     <div class="sgrid">
       <div class="setc"><h3>Audio</h3><label>Effekte <input type="range" min="0" max="1" step="0.05" value="${s.sfx}" class="rsfx"></label><label>Musik <input type="range" min="0" max="1" step="0.05" value="${s.music}" class="rmus"></label></div>
       <div class="setc"><h3>Grafik</h3><div class="chips">${[['high', 'Hoch'], ['medium', 'Mittel'], ['low', 'Niedrig (Akku)']].map(([k, n]) => `<button class="chip ${s.quality === k ? 'on' : ''}" data-q="${k}">${n}</button>`).join('')}</div><small>„Niedrig“ schaltet Schatten und Kantenglättung ab (Neustart der Seite empfohlen).</small></div>
-      <div class="setc"><h3>Steuerung</h3><div class="keys"><span><kbd>W A S D</kbd> Bewegen</span><span><kbd>Maus</kbd> Zielen</span><span><kbd>Linksklick</kbd> Angriff</span><span><kbd>Rechtsklick</kbd>/<kbd>Leertaste</kbd> Super</span><span><kbd>E</kbd> Gadget</span><span><kbd>F</kbd>/<kbd>Q</kbd> Transformation</span><span><kbd>1–4</kbd> Pins</span><span><kbd>Esc</kbd> Match verlassen</span></div><small>Touch: linker Joystick bewegt; Angriff/Super ziehen zum Zielen, tippen für Auto-Aim.</small></div>
+      <div class="setc"><h3>Steuerung</h3><p class="touch-only">📱 <b>Linker Daumen:</b> irgendwo links auf den Bildschirm tippen und ziehen = bewegen.<br>🔴 <b>Angriff:</b> kurz tippen = Auto-Aim, ziehen = selbst zielen.<br>⭐ <b>Super</b> genauso · 🟢 <b>Gadget</b> · 🌈 <b>FORM</b> = Transformation, sobald voll.</p><label class="adm-tg"><input type="checkbox" class="vib" ${s.vibrate !== false ? 'checked' : ''}> Vibration bei Treffern</label><div class="keys desk-only"><span><kbd>W A S D</kbd> Bewegen</span><span><kbd>Maus</kbd> Zielen</span><span><kbd>Linksklick</kbd> Angriff</span><span><kbd>Rechtsklick</kbd>/<kbd>Leertaste</kbd> Super</span><span><kbd>E</kbd> Gadget</span><span><kbd>F</kbd>/<kbd>Q</kbd> Transformation</span><span><kbd>1–4</kbd> Pins</span><span><kbd>Esc</kbd> Match verlassen</span></div><small>Touch: linker Joystick bewegt; Angriff/Super ziehen zum Zielen, tippen für Auto-Aim.</small></div>
       <div class="setc"><h3>Code einlösen</h3><p>Gib einen Code ein, um Belohnungen freizuschalten.</p><div class="row"><input class="inp codeinp" maxlength="16" placeholder="Code"><button class="btn green redeem">Einlösen</button></div></div>
-      <div class="setc"><h3>Spielstand</h3><p>Dein Fortschritt wird lokal in diesem Browser gespeichert.</p><button class="btn red reset">Spielstand zurücksetzen</button></div>
+      <div class="setc"><h3>Account</h3><p>Angemeldet als <b>${esc(Save.data.player.name)}</b>${Accounts.isOwner() ? ' 👑' : ''}. Jeder Account hat einen eigenen Spielstand auf diesem Gerät.</p>
+        <div class="row"><button class="btn blue switchacc">Account wechseln</button><input class="inp sm newpin" type="password" inputmode="numeric" maxlength="8" placeholder="Neue PIN"><button class="btn ghost setpin">PIN setzen</button></div>
+        ${Accounts.isOwner() ? '' : '<div class="row"><button class="btn red delacc">Account löschen</button></div>'}</div>
+      <div class="setc"><h3>Spielstand</h3><p>Fortschritt dieses Accounts zurücksetzen.</p><button class="btn red reset">Spielstand zurücksetzen</button></div>
       <div class="setc wide"><h3>Über dieses Projekt</h3><p><b>ANIME BRAWL – ULTIMATE CLASH</b> ist ein nicht-kommerzieller Fan-Prototyp. Alle Figuren gehören ihren jeweiligen Rechteinhabern (Jujutsu Kaisen, Dragon Ball, Naruto, Bleach, One Piece). Es werden keine Original-Assets, -Musik oder -Animationen verwendet: Modelle, Effekte, Sounds und Musik sind prozedural im Spiel erzeugt. Spielmodi und Systeme sind vom Genre der 3v3-Arena-Brawler inspiriert, Namen und Grafiken sind eigenständig.</p></div>
     </div></div>`;
   const ui = app.ui;
   ui.querySelector('.rsfx').oninput = (e) => { s.sfx = +e.target.value; setVolumes(s.sfx, s.music); Save.save(); };
   ui.querySelector('.rmus').oninput = (e) => { s.music = +e.target.value; setVolumes(s.sfx, s.music); Save.save(); };
   ui.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { s.quality = b.dataset.q; Save.save(); app.applyQuality(); settings(app); });
+  ui.querySelector('.switchacc').onclick = () => app.logout();
+  ui.querySelector('.vib').onchange = (e) => { s.vibrate = e.target.checked; Save.save(); };
+  ui.querySelector('.setpin').onclick = async () => { const err = await Accounts.setPin(Save.accountId, ui.querySelector('.newpin').value.trim()); app.toast(err || 'PIN gespeichert', err ? '' : 'gold'); };
+  ui.querySelector('.delacc')?.addEventListener('click', () => { const m = app.modal(`<h2>Account löschen?</h2><p>„${esc(Save.data.player.name)}“ und der gesamte Spielstand werden von diesem Gerät gelöscht.</p><div class="row"><button class="btn ghost no">Abbrechen</button><button class="btn red yes">Löschen</button></div>`); m.el.querySelector('.no').onclick = () => m.close(); m.el.querySelector('.yes').onclick = () => { Accounts.remove(Save.accountId); m.close(); app.logout(); }; });
   ui.querySelector('.redeem').onclick = () => { const r = redeemCode(ui.querySelector('.codeinp').value); app.toast(r.text, r.ok ? 'gold' : ''); if (r.ok) { sfx('unlock'); settings(app); } };
   ui.querySelector('.reset').onclick = () => { const m = app.modal(`<h2>Wirklich zurücksetzen?</h2><p>Alle Kämpfer, Trophäen und Käufe gehen verloren.</p><div class="row"><button class="btn ghost no">Abbrechen</button><button class="btn red yes">Zurücksetzen</button></div>`); m.el.querySelector('.no').onclick = () => m.close(); m.el.querySelector('.yes').onclick = () => { Save.reset(); m.close(); app.setStageChar(); app.show('lobby'); }; };
   ui.querySelector('.back').onclick = () => app.show('lobby');
@@ -663,4 +673,4 @@ function results(app, params) {
   if (TROPHY_ROAD.some(r => r.t <= total && !d.roadClaimed.includes(r.t))) setTimeout(() => app.toast('Neue Belohnung auf dem Trophäenpfad!', 'gold'), 900);
 }
 
-export const SCREENS = { lobby, brawlers, detail, shop, pass, road, quests, profile, friends, club, ranking, events, settings, matchmaking, results };
+export const SCREENS = { accounts: accountsScreen, admin: adminScreen, lobby, brawlers, detail, shop, pass, road, quests, profile, friends, club, ranking, events, settings, matchmaking, results };

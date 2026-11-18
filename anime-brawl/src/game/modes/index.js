@@ -592,7 +592,7 @@ class TrainingMode extends Mode {
   respawnTime(f) { return f === this.bot ? 2 : 1; }
   spawnPoint(f) { return f === this.bot ? { x: 0, z: -4 } : (this.w.markers['1']?.[0] ?? { x: 0, z: 5 }); }
   botGoal(f) { const p = this.w.player; return p ? { x: p.x, z: p.z } : null; }
-  hud() { return { center: 'TRAINING — Esc / ✕ zum Verlassen' }; }
+  hud() { return { center: 'TRAINING' }; }
 }
 
 export function createMode(id, w, o) {

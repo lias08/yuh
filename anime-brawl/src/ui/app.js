@@ -4,18 +4,22 @@ import { Stage, portrait } from '../render/stage.js';
 import { prewarmLooks, isLookReady, setLowEnd } from '../render/model.js';
 import { looksFor, lookFor } from '../game/fighter.js';
 import { Save, bData, owned, applyMatch, totalTrophies, seeded, botName, note } from '../core/save.js';
-import { initAudio, music, setVolumes, sfx } from '../core/audio.js';
+import { initAudio, music, stopMusic, setVolumes, sfx } from '../core/audio.js';
 import { ROSTER, BY_ID, RARITIES, skinsFor } from '../data/index.js';
 import { MODES, THEMES, TOURNAMENT_RULES } from '../data/maps.js';
 import { World } from '../game/world.js';
 import { Hud } from '../game/hud.js';
 import { Input, AimIndicator } from '../game/input.js';
 import { SCREENS } from './screens.js';
+import { Accounts } from '../core/accounts.js';
+import { App as CapApp } from '@capacitor/app';
 import { LocalTransport } from '../net/transport.js';
 
 const RARITY_HEX = (r) => parseInt(RARITIES[r].color.slice(1), 16);
 // debug flags via URL: ?autoplay=1 (player controlled by AI), ?sim=N (N simulation steps per frame, no rendering)
 const QS = new URLSearchParams(location.search);
+export const TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+if (TOUCH) document.documentElement.classList.add('touch');
 export const DEBUG = { autoplay: QS.has('autoplay'), sim: +(QS.get('sim') || 0) };
 
 export class App {
@@ -24,7 +28,8 @@ export class App {
     this.ui = document.getElementById('ui');
     this.modalRoot = document.getElementById('modal');
     this.hudRoot = document.getElementById('hud');
-    Save.load();
+    Accounts.load();
+    Save.load(Accounts.db.current);
     const q = Save.data.settings.quality;
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: q !== 'low', powerPreference: 'high-performance' });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -43,9 +48,23 @@ export class App {
     setVolumes(Save.data.settings.sfx, Save.data.settings.music);
     document.addEventListener('pointerdown', () => { initAudio(); if (!this.world) music('lobby'); }, { once: true });
     this.setStageChar();
-    this.show('lobby');
+    this.initMobile();
+    if (Accounts.current()) this.show('lobby'); else this.show('accounts');
     requestAnimationFrame((t) => this.loop(t));
   }
+  /** switch to an account's save slot and go to the lobby */
+  enterAccount(id, isNew = false) {
+    Save.load(id);
+    if (isNew && TOUCH) Save.data.settings.quality = 'medium';
+    Save.save();
+    this.applyQuality();
+    setVolumes(Save.data.settings.sfx, Save.data.settings.music);
+    this.stageChar = null;
+    this.setStageChar();
+    this.show('lobby');
+    if (Accounts.isOwner(id)) this.toast('👑 Willkommen, Besitzer!', 'gold');
+  }
+  logout() { Accounts.logout(); Save.load(null); this.show('accounts'); }
   applyQuality() {
     const q = Save.data.settings.quality;
     setLowEnd(q === 'low');
@@ -131,7 +150,7 @@ export class App {
     const pickDef = (exclude) => { let c; do { c = ROSTER[Math.floor(r() * ROSTER.length)]; } while (exclude.has(c.id)); exclude.add(c.id); return c; };
     const used = new Set([myId]);
     const bot = (team, defX, nameX) => ({ def: defX, team, level: lvl(), name: nameX ?? botName(r), gadget: r() < 0.6 && lvl() >= 5 ? Math.floor(r() * 2) : -1, starPower: lvl() >= 7 ? Math.floor(r() * 2) : -1, gears: [] });
-    const player = { def, team: 0, isPlayer: true, level: mb.level, name: d.player.name, skin: skin && skin.look ? skin : null, gadget: modeId === 'training' ? 0 : (mb.level >= 5 ? mb.gadget : -1), starPower: mb.level >= 7 ? mb.sp : -1, gears: (mb.gear || []).map(i => ['speed', 'shield', 'damage', 'health', 'vision', 'aura'][i]).filter(Boolean), overdrive: !!mb.overdrive };
+    const player = { def, team: 0, isPlayer: true, level: mb.level, name: (Accounts.isOwner() ? '👑 ' : '') + d.player.name, skin: skin && skin.look ? skin : null, gadget: modeId === 'training' ? 0 : (mb.level >= 5 ? mb.gadget : -1), starPower: mb.level >= 7 ? mb.sp : -1, gears: (mb.gear || []).map(i => ['speed', 'shield', 'damage', 'health', 'vision', 'aura'][i]).filter(Boolean), overdrive: !!mb.overdrive };
     const M = MODES[modeId];
     const L = [player];
     if (modeId === 'training') return L;
@@ -188,12 +207,15 @@ export class App {
     hud.bindButtons(input);
     const world = new World({
       renderer: this.renderer, hud, input, mode: M, map: M.map, theme: pm.theme, lineups: pm.lineups, rules: pm.rules,
-      difficulty: this.difficulty(), quality: Save.data.settings.quality, seed: Math.floor(Math.random() * 1000),
+      difficulty: (Accounts.isOwner() && Save.data.admin?.botDiff != null) ? Save.data.admin.botDiff : this.difficulty(), quality: Save.data.settings.quality,
+      cheats: Accounts.isOwner() ? (Save.data.admin || {}) : {}, seed: Math.floor(Math.random() * 1000),
       onEnd: (res) => this.endMatch(res), onExit: () => this.exitMatch(),
       onTrainingSwitch: () => this.trainingSwitch(),
       autoplay: DEBUG.autoplay,
     });
     hud.onPin = (i) => world.player && hud.pin(world.player, i);
+    hud.vibrate = Save.data.settings.vibrate !== false;
+    if (Accounts.isOwner() && Save.data.admin?.showFps) hud.fpsEl.style.display = 'block';
     hud.world = world;
     this.world = world; this.input = input; this.hud = hud;
     this.aim = new AimIndicator(world.scene);
@@ -257,11 +279,33 @@ export class App {
     this.startMatch(T.modes[i], { rules: { ...rule }, tournament: true });
   }
 
+  // ---- mobile: Android back button + pause in background ------------------------------------
+  initMobile() {
+    document.addEventListener('visibilitychange', () => {
+      this.paused = document.hidden;
+      if (document.hidden) { stopMusic(); } else { this.last = performance.now(); music(this.world ? 'battle' : 'lobby'); }
+    });
+    try {
+      CapApp.addListener('backButton', () => {
+        if (this.modalRoot.querySelector('.modal-wrap')) { this.modalRoot.querySelector('.modal-wrap .mclose')?.click(); return; }
+        if (this.world) { this.exitMatch(); return; }
+        if (this.screen === 'lobby' || this.screen === 'accounts') { CapApp.minimizeApp?.(); return; }
+        if (this.screen === 'matchmaking') return;
+        this.show(this.params?.from || 'lobby');
+      });
+    } catch { /* not running inside the Android app */ }
+    // block pinch-zoom / double-tap zoom gestures
+    document.addEventListener('gesturestart', (e) => e.preventDefault());
+    document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
+  }
+
   // ---- loop -------------------------------------------------------------------------------
   loop(t) {
     const dt = Math.min(0.1, (t - this.last) / 1000); this.last = t;
     this.fpsAcc += dt; this.fpsN++;
     if (this.fpsAcc > 0.5) { this.fps = Math.round(this.fpsN / this.fpsAcc); this.fpsAcc = 0; this.fpsN = 0; }
+    if (this.paused) { requestAnimationFrame((tt) => this.loop(tt)); return; }
+    if (this.hud?.fpsEl && this.hud.fpsEl.style.display !== 'none') this.hud.fpsEl.textContent = this.fps + ' FPS';
     try {
       if (this.world && DEBUG.sim) {
         for (let i = 0; i < DEBUG.sim && this.world; i++) this.world.update(0.05);

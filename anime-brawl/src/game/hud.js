@@ -23,8 +23,14 @@ export class Hud {
     this.flashEl = el('hud-flash');
     this.exitBtn = el('hud-exit', '✕');
     this.exitBtn.addEventListener('click', () => opts.onExit && opts.onExit());
-    this.pinBar = el('hud-pins', PINS.slice(0, 4).map((p, i) => `<button data-i="${i}" title="${p.name}">${p.icon}</button>`).join(''));
-    this.pinBar.addEventListener('pointerdown', (e) => { const b = e.target.closest('button'); if (b) { e.stopPropagation(); this.onPin && this.onPin(+b.dataset.i); } });
+    // emotes behind one small button so nothing blocks the arena
+    this.pinBar = el('hud-pins', `<button class="pin-toggle" title="Emotes">😊</button><div class="pin-list">${PINS.slice(0, 4).map((p, i) => `<button data-i="${i}" title="${p.name}">${p.icon}</button>`).join('')}</div>`);
+    this.pinBar.addEventListener('pointerdown', (e) => {
+      const b = e.target.closest('button'); if (!b) return; e.stopPropagation();
+      if (b.classList.contains('pin-toggle')) { this.pinBar.classList.toggle('open'); return; }
+      this.onPin && this.onPin(+b.dataset.i); this.pinBar.classList.remove('open');
+    });
+    this.fpsEl = el('hud-fps', ''); this.fpsEl.style.display = 'none';
     this.status = el('hud-status', `<div class="formbar"><div class="fname"></div><div class="ftrack"><div class="ffill"></div></div></div>`);
     this.unitEls = new Map();
     this.popList = [];
@@ -170,7 +176,7 @@ export class Hud {
     setTimeout(() => d.remove(), 4000);
     while (this.feed.children.length > 4) this.feed.lastChild.remove();
   }
-  hurt() { this.vig.classList.remove('on'); void this.vig.offsetWidth; this.vig.classList.add('on'); }
+  hurt() { if (this.vibrate && navigator.vibrate) { const now = performance.now(); if (now - (this.lastVib || 0) > 250) { this.lastVib = now; try { navigator.vibrate(25); } catch {} } } this.vig.classList.remove('on'); void this.vig.offsetWidth; this.vig.classList.add('on'); }
   flash(color) { this.flashEl.style.background = color; this.flashEl.classList.remove('on'); void this.flashEl.offsetWidth; this.flashEl.classList.add('on'); }
   clear() { this.root.innerHTML = ''; this.unitEls.clear(); this.popList = []; }
 }

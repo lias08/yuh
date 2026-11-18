@@ -452,6 +452,11 @@ export class World {
     }
     this.time += dt;
     const live = this.countdown <= 0 && !this.over;
+    const ch = this.o.cheats;
+    if (ch && this.player && this.player.alive) {
+      if (ch.god) { this.player.addStatus('invuln', 0.2); }
+      if (ch.instantSuper) { this.player.superCharge = 1; if (!this.player.transformed || this.player.canStage2) this.player.transCharge = 1; }
+    }
     // input → player
     if (this.player && live && !this.player.brain) this.input.apply(this, this.player, dt);
     else if (this.player) { this.player.moveIn.x = 0; this.player.moveIn.z = 0; }
