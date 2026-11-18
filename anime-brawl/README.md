@@ -26,7 +26,7 @@ npm run check:data # validates all 50 character kits
 
 ## Android APK
 
-A signed release APK is in `release/AnimeBrawl-UltimateClash-v1.2.0.apk` (≈3.9 MB, Android 7+ / API 24+, landscape, fullscreen, fully offline).
+A signed release APK is in `release/AnimeBrawl-UltimateClash-v1.2.1.apk` (≈3.9 MB, Android 7+ / API 24+, landscape, fullscreen, fully offline).
 Install it by copying it to your phone and opening it (allow "install from unknown sources").
 
 Build it yourself (needs JDK 21 and the Android SDK, `ANDROID_HOME` set):

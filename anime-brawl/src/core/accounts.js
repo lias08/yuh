@@ -52,11 +52,13 @@ export const Accounts = {
       if (legacy && !this.db.accounts.length) {
         const data = JSON.parse(legacy);
         let name = data?.player?.name || 'Spieler';
-        if (validateName(name) || skeleton(name) === skeleton(OWNER_NAME)) name = 'Spieler' + Math.floor(1000 + Math.random() * 9000);
+        const legacyOwner = nameKey(name) === OWNER_NAME;
+        if (validateName(name) || (!legacyOwner && skeleton(name) === skeleton(OWNER_NAME))) name = 'Spieler' + Math.floor(1000 + Math.random() * 9000);
         const id = rid();
+        if (legacyOwner) this.db.ownerId = id;
         localStorage.setItem(saveKey(id), legacy);
         localStorage.removeItem(LEGACY_SAVE);
-        this.db.accounts.push({ id, name, key: nameKey(name), skel: skeleton(name), created: Date.now(), pin: null, salt: rid(), owner: false });
+        this.db.accounts.push({ id, name, key: nameKey(name), skel: skeleton(name), created: Date.now(), pin: null, salt: rid(), owner: legacyOwner });
         this.db.current = id;
         this.persist();
       }
@@ -102,14 +104,21 @@ export const Accounts = {
     return { ok: true };
   },
   logout() { this.db.current = null; this.persist(); },
-  rename(id, name) {
+  /** rename; taking the owner name (while unclaimed) needs a PIN and makes the account the owner */
+  async rename(id, name, pin = '') {
     const a = this.get(id); if (!a) return 'Account nicht gefunden.';
     if (this.isOwner(id)) return 'Der Besitzer-Name kann nicht geändert werden.';
     const err = this.nameError(name, id); if (err) return err;
-    if (nameKey(name) === OWNER_NAME) return 'Dieser Name ist reserviert.';
+    const claim = nameKey(name) === OWNER_NAME;
+    if (claim) {
+      if (this.ownerExists()) return 'Dieser Name ist bereits vergeben.';
+      if (!/^\d{4,8}$/.test(pin)) return 'Für den Besitzer-Namen brauchst du eine PIN (4–8 Ziffern).';
+      a.pin = await hashPin(pin, a.salt); a.owner = true; this.db.ownerId = a.id;
+    }
     a.name = name.trim(); a.key = nameKey(a.name); a.skel = skeleton(a.name);
     this.persist(); return null;
   },
+  ownerNeedsPin() { const o = this.get(this.db.ownerId); return !!o && !o.pin; },
   async setPin(id, pin) {
     const a = this.get(id); if (!a) return 'Account nicht gefunden.';
     if (!pin) { if (this.isOwner(id)) return 'Der Besitzer-Account braucht eine PIN.'; a.pin = null; this.persist(); return null; }

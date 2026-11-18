@@ -19,7 +19,7 @@ import { LocalTransport } from '../net/transport.js';
 const RARITY_HEX = (r) => parseInt(RARITIES[r].color.slice(1), 16);
 // debug flags via URL: ?autoplay=1 (player controlled by AI), ?sim=N (N simulation steps per frame, no rendering)
 const QS = new URLSearchParams(location.search);
-export const APP_VERSION = '1.2.0';
+export const APP_VERSION = '1.2.1';
 export const TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 if (TOUCH) document.documentElement.classList.add('touch');
 export const DEBUG = { autoplay: QS.has('autoplay'), sim: +(QS.get('sim') || 0) };
@@ -52,7 +52,7 @@ export class App {
     this.setStageChar();
     Voice.setOwner(Accounts.db.current);
     this.initMobile();
-    this.titleScreen(() => { if (Accounts.current()) this.show('lobby'); else this.show('accounts'); });
+    this.titleScreen(() => { if (Accounts.current()) { this.show('lobby'); if (Accounts.isOwner() && Accounts.ownerNeedsPin()) this.askOwnerPin(); } else this.show('accounts'); });
     requestAnimationFrame((t) => this.loop(t));
   }
   titleScreen(next) {
@@ -75,6 +75,11 @@ export class App {
     this.setStageChar();
     this.show('lobby');
     if (Accounts.isOwner(id)) this.toast('👑 Willkommen, Besitzer!', 'gold');
+    if (Accounts.isOwner(id) && Accounts.ownerNeedsPin()) this.askOwnerPin();
+  }
+  askOwnerPin() {
+    const m = this.modal(`<h2>👑 PIN festlegen</h2><p>Schütze deinen Besitzer-Account und das Admin-Panel mit einer PIN.</p><input class="inp pin" type="password" inputmode="numeric" maxlength="8" placeholder="4–8 Ziffern"><div class="acc-err"></div><button class="btn yellow ok">Speichern</button>`, { noClose: true });
+    m.el.querySelector('.ok').onclick = async () => { const err = await Accounts.setPin(Save.accountId, m.el.querySelector('.pin').value.trim()); if (err) { m.el.querySelector('.acc-err').textContent = err; return; } m.close(); this.toast('PIN gespeichert', 'gold'); };
   }
   logout() { Accounts.logout(); Save.load(null); this.show('accounts'); }
   applyQuality() {

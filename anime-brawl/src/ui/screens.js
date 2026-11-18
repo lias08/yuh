@@ -518,7 +518,11 @@ function profile(app) {
   app.ui.querySelector('.seltitle').onchange = (e) => { d.player.title = e.target.value; Save.save(); };
   app.ui.querySelector('.rename')?.addEventListener('click', () => {
     const m = app.modal(`<h2>Name ändern</h2><input class="inp" maxlength="16" value="${esc(d.player.name)}"><button class="btn yellow ok">Speichern</button>`);
-    m.el.querySelector('.ok').onclick = () => { const v = m.el.querySelector('.inp').value.trim(); const err = Accounts.rename(Save.accountId, v); if (err) { app.toast(err); return; } d.player.name = v; Save.save(); m.close(); profile(app); };
+    const pinIn = document.createElement('input'); pinIn.className = 'inp rpin'; pinIn.type = 'password'; pinIn.inputMode = 'numeric'; pinIn.maxLength = 8; pinIn.placeholder = 'PIN für den Besitzer-Account (4–8 Ziffern)'; pinIn.style.display = 'none';
+    const errEl = document.createElement('div'); errEl.className = 'acc-err';
+    const nameIn = m.el.querySelector('.inp'); nameIn.after(pinIn, errEl);
+    nameIn.addEventListener('input', () => { const own = nameIn.value.trim().toLowerCase() === 'zlias' && !Accounts.ownerExists(); pinIn.style.display = own ? '' : 'none'; errEl.textContent = own ? '👑 Besitzer-Name: Bitte eine PIN festlegen.' : ''; errEl.className = 'acc-err' + (own ? ' ok' : ''); });
+    m.el.querySelector('.ok').onclick = async () => { const v = nameIn.value.trim(); const err = await Accounts.rename(Save.accountId, v, pinIn.value.trim()); if (err) { errEl.textContent = err; errEl.className = 'acc-err'; return; } m.close(); app.enterAccount(Save.accountId); if (Accounts.isOwner()) app.stage.celebrate(0xffd23f); };
   });
   app.ui.querySelector('.chava').onclick = () => {
     const m = app.modal(`<h2>Avatar wählen</h2><div class="avgrid">${Object.keys(d.brawlers).map(id => `<button data-id="${id}">${pimg(app, id)}</button>`).join('')}</div>`, { wide: true });
