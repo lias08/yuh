@@ -12,3 +12,7 @@ BrawlArena/.vs/
 BrawlArena/.idea/
 *.apk
 *.aab
+
+# Godot
+godot/.godot/
+build/

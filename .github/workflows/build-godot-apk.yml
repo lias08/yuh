@@ -1,0 +1,78 @@
+# Baut die Godot-Version als Android-APK (ohne Lizenz) und stellt sie als
+# direkten Download bereit: Reiter "Releases" → neueste "Test-APK" → BrawlArena.apk
+name: Godot-APK bauen
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'godot/**'
+      - '.github/workflows/build-godot-apk.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: APK erstellen
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.2.2
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Export-Vorlagen und Android-Einstellungen einrichten
+        run: |
+          mkdir -p ~/.local/share/godot/export_templates ~/.config/godot
+          cp -r /root/.local/share/godot/export_templates/* ~/.local/share/godot/export_templates/ || true
+          ls ~/.local/share/godot/export_templates
+          # Debug-Signaturschlüssel erzeugen (für installierbare Test-APKs)
+          keytool -genkeypair -v -keystore /tmp/debug.keystore -storepass android -alias androiddebugkey \
+            -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          SDK=$(ls -d /usr/lib/android-sdk 2>/dev/null || echo "$ANDROID_HOME")
+          for f in editor_settings-4.tres editor_settings-4.2.tres; do
+            cat > ~/.config/godot/$f <<EOT
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "$SDK"
+          export/android/debug_keystore = "/tmp/debug.keystore"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          EOT
+            sed -i 's/^          //' ~/.config/godot/$f
+          done
+          cat ~/.config/godot/editor_settings-4.tres
+
+      - name: Spiel testen (headless)
+        run: |
+          cd godot
+          godot --headless --path . --import || true
+          godot --headless --path . -- --test
+
+      - name: APK exportieren
+        run: |
+          mkdir -p build
+          cd godot
+          godot --headless --verbose --path . --export-debug "Android" ../build/BrawlArena.apk
+          ls -la ../build
+
+      - name: APK als Artefakt hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: BrawlArena-Godot-APK
+          path: build/BrawlArena.apk
+          if-no-files-found: error
+
+      - name: Direkter Download (Release)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: test-apk-${{ github.run_number }}
+          name: Test-APK ${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          body: |
+            BrawlArena Test-APK (Godot) – Training gegen Puppen mit dem Klingengeist (4 Formen).
+            Auf dem Handy herunterladen und installieren („Installation aus unbekannten Quellen“ erlauben).
+          files: build/BrawlArena.apk
