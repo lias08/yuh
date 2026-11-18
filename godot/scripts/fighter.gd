@@ -225,8 +225,8 @@ func _process(delta: float) -> void:
 	var scale_pulse := 1.0
 
 	# Hand-Ruheposition
-	var hr := Vector3(0.44, 0.62 - stance * 0.05, -0.12 - stance * 0.1) + Vector3(0, sin(t * 2.6) * 0.02, -s1 * 0.12 * _move)
-	var hl := Vector3(-0.44, 0.62, -0.08) + Vector3(0, sin(t * 2.6 + 1.0) * 0.02, s1 * 0.12 * _move)
+	var hr := Vector3(0.52, 0.66 - stance * 0.05, -0.16 - stance * 0.12) + Vector3(0, sin(t * 2.6) * 0.02, -s1 * 0.14 * _move)
+	var hl := Vector3(-0.52, 0.64, -0.08) + Vector3(0, sin(t * 2.6 + 1.0) * 0.02, s1 * 0.14 * _move)
 	var wrot := Vector3(-0.35 - stance * 0.3, 0.0, 0.0)
 
 	# Schwerthiebe
@@ -238,12 +238,12 @@ func _process(delta: float) -> void:
 			"ltr", "rtl":
 				var a0 := -85.0 if _swing_dir == "ltr" else 85.0
 				var a := deg_to_rad(lerp(a0, -a0, e))
-				hr = Vector3(sin(a) * 0.55, 0.72, -cos(a) * 0.5)
+				hr = Vector3(sin(a) * 0.62, 0.8, -cos(a) * 0.58)
 				wrot = Vector3(0, -a, 0)
 				yaw_extra = -a * 0.25
 				hl = hl.lerp(hr * Vector3(0.4, 1, 1), 0.4)
 			_:
-				hr = Vector3(0.2, lerp(1.4, 0.55, e), -0.45)
+				hr = Vector3(0.2, lerp(1.6, 0.6, e), -0.5)
 				wrot = Vector3(deg_to_rad(lerp(80.0, -15.0, e)), 0, 0)
 				lean -= sin(k * PI) * 0.25
 		if k >= 1.0:
@@ -288,3 +288,4 @@ func _process(delta: float) -> void:
 	rig.foot_r.position = _foot_rest_r + Vector3(0, max(0.0, -cos(_phase)) * 0.12 * _move, -s1 * 0.18 * _move)
 	if rig.cape != null:
 		rig.cape.rotation.x = 0.35 * _move + abs(s1) * 0.08 * _move
+	ModelBuilder.update_limbs(rig)

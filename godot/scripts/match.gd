@@ -73,7 +73,7 @@ func _ready() -> void:
 	_spawn_dummy(Vector3(4, 0, -4), "shooter")
 	_spawn_dummy(Vector3(0, 0, -1), "static")
 	aim_mesh = MeshInstance3D.new()
-	aim_mesh.material_override = _fx_mat(Color(1, 1, 1, 0.3))
+	aim_mesh.material_override = _aim_mat()
 	aim_mesh.visible = false
 	add_child(aim_mesh)
 	_build_hud()
@@ -87,12 +87,12 @@ func _build_environment() -> void:
 	e.background_color = Color(0.45, 0.72, 1.0)
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color(0.75, 0.78, 0.95)
-	e.ambient_light_energy = 0.55
+	e.ambient_light_energy = 0.3
 	env.environment = e
 	add_child(env)
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-52, -35, 0)
-	sun.light_energy = 1.15
+	sun.light_energy = 0.95
 	sun.light_color = Color(1, 0.96, 0.88)
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 40.0
@@ -112,8 +112,8 @@ func _build_arena() -> void:
 	sh.code = """
 shader_type spatial;
 render_mode diffuse_toon;
-uniform vec4 col_a : source_color = vec4(0.93, 0.80, 0.55, 1.0);
-uniform vec4 col_b : source_color = vec4(0.88, 0.74, 0.49, 1.0);
+uniform vec4 col_a : source_color = vec4(0.86, 0.68, 0.42, 1.0);
+uniform vec4 col_b : source_color = vec4(0.8, 0.61, 0.37, 1.0);
 varying vec3 wpos;
 void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
@@ -133,7 +133,7 @@ void fragment() {
 	om.size = Vector2(80, 80)
 	outer.mesh = om
 	outer.position.y = -0.02
-	outer.material_override = ModelBuilder.mat(Color(0.55, 0.75, 0.4), false)
+	outer.material_override = ModelBuilder.mat(Color(0.42, 0.72, 0.35), false)
 	add_child(outer)
 
 	# Randmauern + Deckung
@@ -152,8 +152,15 @@ void fragment() {
 	_add_wall(Rect2(7, -9, 1, 3), wall_col, top_col)
 	# Büsche & Deko (nur Optik)
 	for p in [Vector3(-7, 0, 7), Vector3(7, 0, 7), Vector3(-6, 0, -1), Vector3(6, 0, -1)]:
-		for i in 4:
-			ModelBuilder.part(self, "sphere", p + Vector3((i % 2) * 0.7 - 0.35, 0.45 + (i / 2) * 0.15, (i / 2) * 0.7 - 0.35), Vector3.ONE * 0.85, Color(0.3, 0.68, 0.3))
+		# Buschgruppe aus mehreren flauschigen Kugeln
+		for i in 7:
+			var a := i / 7.0 * TAU
+			var off := Vector3(cos(a), 0, sin(a)) * (0.0 if i == 0 else 0.55)
+			ModelBuilder.part(self, "sphere", p + off + Vector3(0, 0.5 + (0.25 if i == 0 else 0.0), 0), Vector3.ONE * (1.1 if i == 0 else 0.8), Color(0.32, 0.72, 0.32).lightened((i % 3) * 0.06))
+	# Kisten als Deko am Rand
+	for p in [Vector3(-8.5, 0, 11), Vector3(8.5, 0, 11), Vector3(-8.5, 0, -11.5), Vector3(8.5, 0, -11.5)]:
+		ModelBuilder.part(self, "rbox", p + Vector3(0, 0.45, 0), Vector3(0.9, 0.9, 0.9), Color(0.82, 0.55, 0.3))
+		ModelBuilder.part(self, "box", p + Vector3(0, 0.45, 0), Vector3(0.94, 0.12, 0.94), Color(0.55, 0.35, 0.2), Vector3.ZERO, false)
 	for i in 26:
 		var a := i / 26.0 * TAU
 		var r := randf_range(16.5, 22.0)
@@ -163,9 +170,16 @@ void fragment() {
 
 func _add_wall(r: Rect2, side: Color, top: Color) -> void:
 	walls.append(r)
-	var c := Vector3(r.position.x + r.size.x / 2.0, 0, r.position.y + r.size.y / 2.0)
-	ModelBuilder.part(self, "box", c + Vector3(0, 0.6, 0), Vector3(r.size.x, 1.2, r.size.y), side)
-	ModelBuilder.part(self, "box", c + Vector3(0, 1.24, 0), Vector3(r.size.x + 0.06, 0.14, r.size.y + 0.06), top, Vector3.ZERO, false)
+	# Wand aus einzelnen, abgerundeten Blöcken mit heller Deckplatte (leicht unregelmäßig)
+	var nx: int = max(1, int(round(r.size.x)))
+	var nz: int = max(1, int(round(r.size.y)))
+	for ix in nx:
+		for iz in nz:
+			var c := Vector3(r.position.x + (ix + 0.5) * r.size.x / nx, 0, r.position.y + (iz + 0.5) * r.size.y / nz)
+			var h := 1.15 + fmod(abs(c.x * 3.7 + c.z * 1.3), 0.25)
+			var shade := side.darkened(fmod(abs(c.x * 1.7 + c.z * 2.9), 0.12))
+			ModelBuilder.part(self, "rbox", c + Vector3(0, h * 0.5, 0), Vector3(r.size.x / nx, h, r.size.y / nz), shade)
+			ModelBuilder.part(self, "rbox", c + Vector3(0, h + 0.04, 0), Vector3(r.size.x / nx + 0.06, 0.16, r.size.y / nz + 0.06), top, Vector3.ZERO, false)
 
 func _spawn_dummy(pos: Vector3, kind: String) -> void:
 	var color := Color(1, 0.3, 0.3) if kind != "shooter" else Color(0.3, 0.5, 1.0)
@@ -275,7 +289,7 @@ func _damage_dummy(d: Dictionary, amount: float, f: Fighter) -> void:
 	if f != null:
 		f.damage_dealt += amount
 		f.add_charge(amount)
-	_damage_number(d.pos + Vector3(0, 2.0, 0), amount, Color.WHITE)
+	_damage_number(d.pos + Vector3(0, 2.4, 0), amount, Color.WHITE)
 	_burst(d.pos + Vector3(0, 0.9, 0), Color(1, 0.95, 0.7), 8, 4.0, 0.1)
 	if d.hp <= 0.0:
 		d.hp = d.max
@@ -440,10 +454,31 @@ func _update_camera(delta: float) -> void:
 	_cam_focus = _cam_focus.lerp(target, 1.0 - exp(-delta * 6.0))
 	_shake = max(0.0, _shake - delta * 1.5)
 	var shake := Vector3(randf_range(-1, 1), randf_range(-1, 1), 0) * _shake * 0.3
-	cam.position = _cam_focus + Vector3(0, 13.0, 9.0) + shake
+	cam.position = _cam_focus + Vector3(0, 10.5, 7.2) + shake
 	cam.look_at(_cam_focus + Vector3(0, 0, -1.2), Vector3.UP)
 
 # ==================================================================== Effekte
+## Zielanzeige: halbtransparente Fläche mit hellem Rand und laufenden Streifen, nie vom Boden verdeckt.
+func _aim_mat() -> ShaderMaterial:
+	var sh := Shader.new()
+	sh.code = """
+shader_type spatial;
+render_mode unshaded, cull_disabled, depth_test_disabled, blend_mix;
+uniform vec4 color : source_color = vec4(1.0, 1.0, 1.0, 0.45);
+varying vec3 lpos;
+void vertex() { lpos = VERTEX; }
+void fragment() {
+	float r = length(lpos.xz);
+	float stripes = step(0.5, fract(r * 1.5 - TIME * 2.0)) * 0.15;
+	ALBEDO = color.rgb;
+	ALPHA = color.a + stripes;
+}
+"""
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	m.render_priority = 10
+	return m
+
 func _fx_mat(c: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -597,7 +632,7 @@ func _update_aim() -> void:
 		aim_mesh.visible = false
 		return
 	var v: Vector2 = t.pos - t.start
-	if v.length() < 25.0:
+	if v.length() < 12.0:
 		aim_mesh.visible = false
 		return
 	var dir := Vector3(v.x, 0, v.y).normalized()
@@ -605,14 +640,15 @@ func _update_aim() -> void:
 	aim_mesh.visible = true
 	aim_mesh.position = player.position + Vector3(0, 0.05, 0)
 	aim_mesh.rotation.y = atan2(-dir.x, -dir.z)
+	var sm := aim_mesh.material_override as ShaderMaterial
 	if is_super:
 		var sup: Dictionary = form.super
 		aim_mesh.mesh = _sector_mesh(sup.range, 8.0 + sup.width * 6.0)
-		(aim_mesh.material_override as StandardMaterial3D).albedo_color = Color(1, 0.85, 0.2, 0.35)
+		sm.set_shader_parameter("color", Color(1, 0.85, 0.15, 0.45))
 	else:
 		var st: Dictionary = form.combo[0]
 		aim_mesh.mesh = _sector_mesh(st.range, st.arc)
-		(aim_mesh.material_override as StandardMaterial3D).albedo_color = Color(1, 1, 1, 0.3)
+		sm.set_shader_parameter("color", Color(1, 1, 1, 0.45))
 
 # ==================================================================== HUD & Touch
 func _build_hud() -> void:
@@ -779,12 +815,13 @@ func _update_bars() -> void:
 	list.append_array(dummies)
 	for o in list:
 		var is_player := o is Fighter
+		var key: int = o.get_instance_id() if is_player else o.node.get_instance_id()
 		var bar: Control
-		if not bars.has(o):
+		if not bars.has(key):
 			bar = _make_bar(is_player, o.name if not is_player else Game.data.get("player_name", "Du"))
-			bars[o] = bar
-		bar = bars[o]
-		var wpos: Vector3 = (o.position if is_player else o.pos) + Vector3(0, 2.15, 0)
+			bars[key] = bar
+		bar = bars[key]
+		var wpos: Vector3 = (o.position if is_player else o.pos) + Vector3(0, 2.55, 0)
 		var visible_bar: bool = (o.alive if is_player else true) and not cam.is_position_behind(wpos)
 		bar.visible = visible_bar
 		if not visible_bar:

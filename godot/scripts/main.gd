@@ -80,18 +80,19 @@ func _stage(form_index: int, anchor: Vector2, offset: Vector2, size: Vector2) ->
 	e.background_mode = Environment.BG_CLEAR_COLOR
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color(0.8, 0.82, 1.0)
-	e.ambient_light_energy = 0.6
+	e.ambient_light_energy = 0.35
 	env.environment = e
 	stage_viewport.add_child(env)
 	var light := DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-40, 30, 0)
+	light.light_energy = 0.8
 	light.shadow_enabled = true
 	stage_viewport.add_child(light)
 	var cam := Camera3D.new()
 	cam.fov = 32
-	cam.position = Vector3(0, 1.6, 5.6)
+	cam.position = Vector3(0, 1.9, 6.6)
 	stage_viewport.add_child(cam)
-	cam.look_at(Vector3(0, 0.95, 0))
+	cam.look_at(Vector3(0, 1.05, 0))
 	ModelBuilder.part(stage_viewport_root(), "cyl", Vector3(0, -0.12, 0), Vector3(2.6, 0.24, 2.6), Color(0.98, 0.75, 0.2))
 	ModelBuilder.part(stage_viewport_root(), "cyl", Vector3(0, -0.4, 0), Vector3(3.1, 0.3, 3.1), Color(0.85, 0.5, 0.15))
 	stage_model = Node3D.new()
@@ -117,7 +118,10 @@ func _process(delta: float) -> void:
 	if stage_model and is_instance_valid(stage_model) and stage_rig.has("root") and is_instance_valid(stage_rig.root):
 		stage_model.rotation.y = sin(_t * 0.6) * 0.6
 		stage_rig.body.position.y = sin(_t * 2.6) * 0.03
-		stage_rig.hand_r.position.y = 0.62 + sin(_t * 2.6) * 0.03
+		stage_rig.hand_r.position = Vector3(0.52, 0.66 + sin(_t * 2.6) * 0.03, -0.16)
+		stage_rig.hand_l.position = Vector3(-0.52, 0.64 + sin(_t * 2.6 + 1.0) * 0.03, -0.08)
+		stage_rig.weapon.rotation = Vector3(-0.4, 0, 0)
+		ModelBuilder.update_limbs(stage_rig)
 
 # ==================================================================== Hauptmenü
 func show_menu() -> void:
@@ -126,7 +130,7 @@ func show_menu() -> void:
 	var b := Game.selected_brawler()
 	_stage(0, Vector2(0.5, 0.5), Vector2(-300, -300), Vector2(600, 560))
 	var name_l := Game.make_label(b.name.to_upper() + "  •  " + b.rarity, 34, b.rarity_color, 10)
-	_place(name_l, Vector2(0.5, 1), Vector2(-220, -120))
+	_place(name_l, Vector2(0.5, 1), Vector2(-330, -100))
 
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 18)
