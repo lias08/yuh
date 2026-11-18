@@ -124,7 +124,8 @@ func _build_environment() -> void:
 	sun.rotation_degrees = Vector3(-52, -35, 0)
 	sun.light_energy = 0.95
 	sun.light_color = Color(1, 0.96, 0.88)
-	sun.shadow_enabled = true
+	# Im Browser (v. a. iPhone) sind Echtzeitschatten zu teuer.
+	sun.shadow_enabled = not OS.has_feature("web")
 	sun.directional_shadow_max_distance = 40.0
 	add_child(sun)
 	cam = Camera3D.new()

@@ -3,6 +3,7 @@
 extends Node
 
 var ui: CanvasLayer
+var code_entry_label: Label
 var screen: Control
 var stage_viewport: SubViewport
 var stage_model: Node3D
@@ -16,6 +17,9 @@ func _ready() -> void:
 	if "--selftest" in OS.get_cmdline_user_args():
 		_run_tests()
 		return
+	if OS.has_feature("web"):
+		# Browser/Handy: Kantenglättung aus, damit es flüssig läuft.
+		get_viewport().msaa_3d = Viewport.MSAA_DISABLED
 	ui = CanvasLayer.new()
 	add_child(ui)
 	show_menu()
@@ -43,6 +47,16 @@ func _clear() -> void:
 	grad.stretch_mode = TextureRect.STRETCH_SCALE
 	grad.set_anchors_preset(Control.PRESET_FULL_RECT)
 	screen.add_child(grad)
+
+## Am PC kann man den Code auch direkt mit der Tastatur tippen.
+func _unhandled_key_input(event: InputEvent) -> void:
+	if not (event is InputEventKey and event.pressed) or not is_instance_valid(code_entry_label):
+		return
+	var k := event as InputEventKey
+	if k.keycode == KEY_BACKSPACE:
+		code_entry_label.text = code_entry_label.text.substr(0, max(0, code_entry_label.text.length() - 1))
+	elif k.unicode >= 32 and code_entry_label.text.length() < 12:
+		code_entry_label.text += char(k.unicode)
 
 func _place(c: Control, anchor: Vector2, offset: Vector2) -> Control:
 	screen.add_child(c)
@@ -87,7 +101,7 @@ func _stage(form_index: int, anchor: Vector2, offset: Vector2, size: Vector2) ->
 	var light := DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-40, 30, 0)
 	light.light_energy = 0.8
-	light.shadow_enabled = true
+	light.shadow_enabled = not OS.has_feature("web")
 	stage_viewport.add_child(light)
 	var cam := Camera3D.new()
 	cam.fov = 32
@@ -701,14 +715,14 @@ func show_settings() -> void:
 	_top_bar("EINSTELLUNGEN", true)
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 22)
-	_place(vb, Vector2(0.5, 0), Vector2(-360, 150))
+	_place(vb, Vector2(0.5, 0), Vector2(-600, 140))
 	vb.add_child(Game.make_label("Soundeffekte", 30))
 	var slider := HSlider.new()
 	slider.min_value = 0
 	slider.max_value = 1
 	slider.step = 0.05
 	slider.value = Game.data.sfx
-	slider.custom_minimum_size = Vector2(720, 50)
+	slider.custom_minimum_size = Vector2(540, 50)
 	slider.value_changed.connect(func(v):
 		Game.data.sfx = v
 		Game.save_game())
@@ -733,23 +747,46 @@ func show_settings() -> void:
 			Game.save_game()
 			show_settings())
 		lang_row.add_child(lb)
-	vb.add_child(Game.make_label("Code eingeben", 30))
+	var hint := Game.make_label("Steuerung: linker Daumen bewegen\noranger Button: antippen = Auto-Zielen, ziehen = zielen\ngelber Button: Super (lädt sich durch Schaden auf)\nPC: WASD, Leertaste, E", 20, Color(0.85, 0.85, 0.95), 5)
+	vb.add_child(hint)
+	var cv := VBoxContainer.new()
+	cv.add_theme_constant_override("separation", 16)
+	_place(cv, Vector2(0.5, 0), Vector2(30, 140))
+	cv.add_child(Game.make_label("Code eingeben", 30))
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", 16)
-	vb.add_child(hb)
-	var code := LineEdit.new()
-	code.placeholder_text = "Code"
-	code.custom_minimum_size = Vector2(400, 80)
-	code.add_theme_font_size_override("font_size", 32)
-	hb.add_child(code)
+	cv.add_child(hb)
+	# Eigene Zifferntasten: Im Browser auf dem Handy erscheint sonst keine Bildschirmtastatur.
+	var code_panel := Game.make_panel(Color(0.12, 0.1, 0.28))
+	code_panel.custom_minimum_size = Vector2(300, 80)
+	hb.add_child(code_panel)
+	var code := Game.make_label("", 36, Color.WHITE, 6)
+	code.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	code.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	code_panel.add_child(code)
 	var redeem := Game.make_button("Einlösen", Color(0.65, 0.35, 1.0), Vector2(260, 80), 28)
 	redeem.pressed.connect(func():
 		var msg := Game.redeem_code(code.text)
 		code.text = ""
 		_popup("Code", msg if msg != "" else "Ungültiger Code."))
 	hb.add_child(redeem)
-	var hint := Game.make_label("Steuerung: linker Daumen bewegen • oranger Button: antippen = Auto-Zielen, ziehen = zielen\ngelber Button: Super (lädt sich durch Schaden auf) • PC: WASD, Leertaste, E", 20, Color(0.85, 0.85, 0.95), 5)
-	vb.add_child(hint)
+	var pad := GridContainer.new()
+	pad.columns = 4
+	pad.add_theme_constant_override("h_separation", 10)
+	pad.add_theme_constant_override("v_separation", 10)
+	cv.add_child(pad)
+	for key in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "⌫", "C"]:
+		var kb := Game.make_button(key, Color(0.35, 0.35, 0.6), Vector2(130, 70), 32)
+		var k: String = key
+		kb.pressed.connect(func():
+			if k == "⌫":
+				code.text = code.text.substr(0, max(0, code.text.length() - 1))
+			elif k == "C":
+				code.text = ""
+			elif code.text.length() < 12:
+				code.text += k)
+		pad.add_child(kb)
+	code_entry_label = code
 
 ## Meldung immer in der Bildschirmmitte (eigene Ebene über allem).
 func _popup(title: String, text: String) -> void:
