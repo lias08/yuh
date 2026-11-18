@@ -53,8 +53,8 @@ export const HAIR_STYLES = {
   kakashi: () => [{ t: 'cap', line: 0.05 }, ...ring(8, 60, -100, 140, 0.42, 0.1, 1.3, -0.2, 0.25).map(s => ({ ...s, tiltX: 0.35 })), ...bangs(3, -30, 30, 0.15, 0.06, 45, -0.5)],
   minato: () => [{ t: 'cap', line: 0.05 }, ...ring(10, 56, 60, 300, 0.32, 0.09, 0.7, 0.35, 0.3), ...bangs(2, -55, 55, 0.4, 0.06, 25, -1.0), ...bangs(4, -30, 30, 0.2, 0.07, 45, -0.5)],
   pain: () => [{ t: 'cap', line: 0.05 }, ...ring(12, 55, -175, 175, 0.26, 0.09, 0.85, 0.1, 0.25), ...ring(5, 80, -150, 150, 0.22, 0.09, 1, 0.1)],
-  bowl: () => [{ t: 'cap', line: -0.12, scale: 1.09, bowl: true }],
-  hashirama: () => [{ t: 'cap', line: -0.02, scale: 1.06 }, { t: 'drape', len: 1.05, w: 0.44 }, ...bangs(6, -60, 60, 0.2, 0.08, 32, -0.9)],
+  bowl: () => [{ t: 'cap', line: 0.03, scale: 1.09, bowl: true }],
+  hashirama: () => [{ t: 'cap', line: 0.02, scale: 1.06 }, { t: 'drape', len: 1.05, w: 0.44 }, ...bangs(2, -75, -55, 0.32, 0.08, 28, -1.0), ...bangs(2, 55, 75, 0.32, 0.08, 28, -1.0)],
   ichigo: () => [{ t: 'cap', line: 0.03 }, ...ring(10, 55, -170, 170, 0.28, 0.1, 0.65, 0.35, 0.3), ...ring(5, 80, -140, 140, 0.24, 0.09, 1, 0.2), ...bangs(5, -45, 45, 0.22, 0.07, 38, -0.55)],
   ichigoLong: () => [{ t: 'cap', line: 0.0, scale: 1.06 }, { t: 'drape', len: 0.95, w: 0.4, spiky: true }, ...bangs(6, -55, 55, 0.3, 0.07, 32, -0.85)],
   aizen: () => [{ t: 'cap', line: 0.15 }, ...ring(8, 45, 110, 250, 0.22, 0.09, -0.3, 0.9), { t: 'spike', az: 8, el: 40, len: 0.32, rad: 0.035, lift: -1.2, sweep: -0.2 }],
@@ -108,8 +108,8 @@ export function buildHair(style, r, mat, mat2, outlineFn) {
         const u = outlineFn(geo2, mat2, 0); u.rotation.x = -0.25; g.add(u);
       }
       if (p.bowl) { // straight-cut fringe of the bowl cut
-        const fringe = new THREE.CylinderGeometry(r * 1.1, r * 1.12, r * 0.22, 28, 1, true);
-        const f = outlineFn(fringe, mat); f.position.y = r * 0.34; g.add(f);
+        const fringe = new THREE.CylinderGeometry(r * 1.07, r * 1.1, r * 0.2, 28, 1, true);
+        const f = outlineFn(fringe, mat); f.position.y = r * 0.42; g.add(f);
       }
     } else if (p.t === 'spike') {
       const base = onSphere(p.az, p.el);

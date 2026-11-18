@@ -65,7 +65,7 @@ export class Input {
     this.btnGadget = btn('tc-gadget', '<i class="ic-gad"></i>', this.touch ? '' : 'E');
     this.btnTrans = btn('tc-trans', '<b>FORM</b>', this.touch ? '' : 'F');
     let moveId = null, ox = 0, oy = 0;
-    zone.addEventListener('pointerdown', (e) => { initAudio(); if (e.pointerType === 'touch') { this.touchActive = true; this.mouseUsed = false; } moveId = e.pointerId; ox = e.clientX; oy = e.clientY; base.style.display = 'block'; base.style.left = ox + 'px'; base.style.top = oy + 'px'; zone.setPointerCapture(e.pointerId); });
+    zone.addEventListener('pointerdown', (e) => { initAudio(); if (e.pointerType === 'touch') { this.touchActive = true; this.mouseUsed = false; } moveId = e.pointerId; ox = e.clientX; oy = e.clientY; base.style.display = 'block'; base.style.left = ox + 'px'; base.style.top = oy + 'px'; (() => { try { zone.setPointerCapture(e.pointerId); } catch {} })(); });
     zone.addEventListener('pointermove', (e) => {
       if (e.pointerId !== moveId) return;
       let dx = e.clientX - ox, dy = e.clientY - oy; const L = Math.hypot(dx, dy), max = 55;
@@ -78,7 +78,7 @@ export class Input {
     // aim sticks
     const aimStick = (el, kind) => {
       let id = null, sx = 0, sy = 0, t0 = 0, dragged = false;
-      el.addEventListener('pointerdown', (e) => { initAudio(); e.stopPropagation(); if (e.pointerType === 'touch') { this.touchActive = true; this.mouseUsed = false; } id = e.pointerId; sx = e.clientX; sy = e.clientY; t0 = performance.now(); dragged = false; el.setPointerCapture(e.pointerId); el.classList.add('held'); if (!this.touch && e.pointerType !== 'touch') { /* mouse click on button */ } });
+      el.addEventListener('pointerdown', (e) => { initAudio(); e.stopPropagation(); if (e.pointerType === 'touch') { this.touchActive = true; this.mouseUsed = false; } id = e.pointerId; sx = e.clientX; sy = e.clientY; t0 = performance.now(); dragged = false; (() => { try { el.setPointerCapture(e.pointerId); } catch {} })(); el.classList.add('held'); if (!this.touch && e.pointerType !== 'touch') { /* mouse click on button */ } });
       el.addEventListener('pointermove', (e) => {
         if (e.pointerId !== id) return;
         const dx = e.clientX - sx, dy = e.clientY - sy, L = Math.hypot(dx, dy);

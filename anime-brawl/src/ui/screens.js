@@ -108,7 +108,7 @@ function lobby(app) {
   if (app.stageChar !== d.selected) app.setStageChar(d.selected);
   const tap = app.ui.querySelector('.stage-tap');
   let down = null;
-  tap.addEventListener('pointerdown', (e) => { down = { x: e.clientX, t: performance.now(), s: app.stage.spinTarget }; app.stage.drag = true; tap.setPointerCapture(e.pointerId); });
+  tap.addEventListener('pointerdown', (e) => { down = { x: e.clientX, t: performance.now(), s: app.stage.spinTarget }; app.stage.drag = true; (() => { try { tap.setPointerCapture(e.pointerId); } catch {} })(); });
   tap.addEventListener('pointermove', (e) => { if (down) app.stage.spinTarget = down.s + (e.clientX - down.x) * 0.012; });
   tap.addEventListener('pointerup', (e) => { if (down && Math.abs(e.clientX - down.x) < 8) { app.stage.react(); sfx(def.sfx || 'punch'); } down = null; app.stage.drag = false; });
   app.ui.querySelector('.play-btn').onclick = () => { if (!owned(d.selected)) { app.toast('Kämpfer nicht freigeschaltet'); return; } app.startMatch(d.mode); };
@@ -295,7 +295,7 @@ function detail(app, params) {
     });
     const tap = $('.stage-tap');
     let down = null;
-    tap.addEventListener('pointerdown', (e) => { down = { x: e.clientX, s: app.stage.spinTarget }; app.stage.drag = true; tap.setPointerCapture(e.pointerId); });
+    tap.addEventListener('pointerdown', (e) => { down = { x: e.clientX, s: app.stage.spinTarget }; app.stage.drag = true; (() => { try { tap.setPointerCapture(e.pointerId); } catch {} })(); });
     tap.addEventListener('pointermove', (e) => { if (down) app.stage.spinTarget = down.s + (e.clientX - down.x) * 0.012; });
     tap.addEventListener('pointerup', (e) => { if (down && Math.abs(e.clientX - down.x) < 8) { app.stage.react(); sfx(c.sfx || 'punch'); } down = null; app.stage.drag = false; });
   };

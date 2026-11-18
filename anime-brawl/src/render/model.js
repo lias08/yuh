@@ -172,8 +172,9 @@ export function buildCharacter(look, opts = {}) {
   head.scale.set(1, 0.96, 0.98);
   headG.add(head);
   if (!extras.has('noEars')) for (const s of [-1, 1]) {
-    const ear = ink(new THREE.SphereGeometry(1, 10, 8), skinM, 0.01);
-    if (extras.has('pointyEars')) { ear.geometry = new THREE.ConeGeometry(0.05, 0.18, 8); ear.rotation.z = -s * 1.1; ear.position.set(s * B.head * 1.0, 0.02, 0); }
+    const pointy = extras.has('pointyEars');
+    const ear = ink(pointy ? new THREE.ConeGeometry(0.05, 0.18, 8) : new THREE.SphereGeometry(1, 10, 8), skinM, pointy ? 0.01 : 0.15);
+    if (pointy) { ear.rotation.z = -s * 1.1; ear.position.set(s * B.head * 1.0, 0.02, 0); }
     else { ear.scale.set(0.045, 0.07, 0.04); ear.position.set(s * B.head * 0.97, -0.01, 0); }
     headG.add(ear);
   }
