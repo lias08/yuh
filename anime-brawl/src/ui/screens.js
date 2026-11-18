@@ -3,6 +3,7 @@ import { icon } from './icons.js';
 import { redeemCode } from '../core/save.js';
 import { Accounts } from '../core/accounts.js';
 import { accountsScreen, adminScreen } from './accountScreens.js';
+import { Voice, VOICE_SLOTS } from '../core/voice.js';
 import { Save, bData, owned, totalTrophies, upgrade, upgradeCost, canUpgrade, buyItem, grant, rewardLabel, buyBrawler, openOrb, leaderboard, unreadNotes, note, seeded, botName, MAX_LEVEL, UNLOCK, PRICES, TROPHY_ROAD, PASS, GEARS } from '../core/save.js';
 import { ROSTER, BY_ID, RARITIES, ANIME, skinsFor } from '../data/index.js';
 import { MODES, THEMES, MAPS } from '../data/maps.js';
@@ -261,6 +262,14 @@ function detail(app, params) {
           <h3>Overdrive <small>(ab Level ${UNLOCK.overdrive})</small></h3>
           <div class="ab k-super"><div class="abi">${icon('bolt')}</div><div class="abt"><b>Overdrive-Super</b><p>Jede zweite Super wird zur Overdrive-Super: +25 % Schaden, +25 % Tempo und 15 % Schadensreduktion für 4 s.</p>${b.overdrive ? '<span class="own">Freigeschaltet</span>' : `<button class="btn tiny yellow odbuy ${b.level >= UNLOCK.overdrive ? '' : 'dis'}">${icon('coin')} ${PRICES.overdrive}</button>`}</div></div>`;
       }
+    } else if (st.tab === 'voice') {
+      if (!Voice.index) { Voice.loadIndex().then(() => app.screen === 'detail' && draw()); }
+      body = `<p class="desc">Nimm deine eigenen Sprüche für ${esc(c.name)} auf (max. 3 Sekunden). Sie werden im Kampf abgespielt.</p>
+        <div class="notice small">${icon('info')} Original-Synchronstimmen aus den Animes sind urheberrechtlich geschützt und daher nicht im Spiel enthalten.</div>
+        ${Voice.supported() ? VOICE_SLOTS.map(sl => `<div class="vslot" data-s="${sl.id}"><div class="vt"><b>${sl.name}</b><small>${sl.hint}</small></div>
+          <div class="vmeter"><i></i></div>
+          <button class="btn tiny red vrec">● Aufnehmen</button>${Voice.has(id, sl.id) ? `<button class="btn tiny blue vplay">▶</button><button class="btn tiny ghost vdel">✕</button>` : ''}</div>`).join('')
+          : '<p class="hint">Dein Gerät unterstützt keine Audioaufnahme.</p>'}`;
     } else if (st.tab === 'skins') {
       const skins = skinsFor(c);
       body = `<div class="skins">${skins.map(s => { const own = b && b.skins.includes(s.id); const eq = b && b.skin === s.id; return `<div class="skinc ${eq ? 'eq' : ''}" data-s="${s.id}"><div class="sport">${pimg(app, id, s.id)}</div><b>${esc(s.name)}</b>${rarityTag(s.rarity)}${eq ? '<span class="own">Ausgerüstet</span>' : own ? '<button class="btn tiny blue seq">Ausrüsten</button>' : b ? `<button class="btn tiny green sbuy">${icon('gem')} ${s.price}</button>` : ''}</div>`; }).join('')}</div>
@@ -274,7 +283,7 @@ function detail(app, params) {
         <div class="stage-tap"></div>
       </div>
       <div class="dright">
-        <div class="tabs">${[['info', 'Übersicht'], ['abilities', 'Fähigkeiten'], ['form', 'Transformation'], ['upgrade', 'Upgrades'], ['skins', 'Skins']].map(([k, n]) => `<button class="tab ${st.tab === k ? 'on' : ''}" data-t="${k}">${n}</button>`).join('')}</div>
+        <div class="tabs">${[['info', 'Übersicht'], ['abilities', 'Fähigkeiten'], ['form', 'Transformation'], ['upgrade', 'Upgrades'], ['skins', 'Skins'], ['voice', 'Stimme']].map(([k, n]) => `<button class="tab ${st.tab === k ? 'on' : ''}" data-t="${k}">${n}</button>`).join('')}</div>
         <div class="tbody">${body}</div>
         <div class="dfoot">
           ${b ? `<button class="btn ${d.selected === id ? 'ghost' : 'yellow'} select">${d.selected === id ? icon('check') + ' Ausgewählt' : 'Auswählen'}</button>`
@@ -309,6 +318,17 @@ function detail(app, params) {
       const sid = el.dataset.s; const s = skinsFor(c).find(x => x.id === sid);
       el.querySelector('.seq')?.addEventListener('click', () => { bData(id).skin = sid; Save.save(); draw(); app.stage.celebrate(0xffffff); });
       el.querySelector('.sbuy')?.addEventListener('click', () => { if (d.gems < s.price) { app.toast('Nicht genug Juwelen'); return; } d.gems -= s.price; bData(id).skins.push(sid); bData(id).skin = sid; Save.save(); sfx('unlock'); draw(); app.stage.celebrate(0xffd23f); });
+    });
+    $$('.vslot').forEach(el => {
+      const slot = el.dataset.s, meter = el.querySelector('.vmeter i');
+      el.querySelector('.vrec').onclick = async (ev) => {
+        const btn = ev.currentTarget; if (btn.disabled) return; btn.disabled = true; btn.textContent = '● Aufnahme… (3 s)';
+        try { const blob = await Voice.record(3, (l) => meter.style.width = Math.min(100, l * 140) + '%'); await Voice.save(id, slot, blob); app.toast('Gespeichert!', 'gold'); Voice.lastPlay = 0; Voice.play(id, slot); }
+        catch (e) { app.toast('Mikrofon nicht verfügbar – bitte Berechtigung erlauben.'); }
+        draw();
+      };
+      el.querySelector('.vplay')?.addEventListener('click', () => { Voice.lastPlay = 0; Voice.play(id, slot); });
+      el.querySelector('.vdel')?.addEventListener('click', async () => { await Voice.remove(id, slot); draw(); });
     });
     const tap = $('.stage-tap');
     let down = null;
@@ -599,7 +619,7 @@ function settings(app) {
     <div class="sgrid">
       <div class="setc"><h3>Audio</h3><label>Effekte <input type="range" min="0" max="1" step="0.05" value="${s.sfx}" class="rsfx"></label><label>Musik <input type="range" min="0" max="1" step="0.05" value="${s.music}" class="rmus"></label></div>
       <div class="setc"><h3>Grafik</h3><div class="chips">${[['high', 'Hoch'], ['medium', 'Mittel'], ['low', 'Niedrig (Akku)']].map(([k, n]) => `<button class="chip ${s.quality === k ? 'on' : ''}" data-q="${k}">${n}</button>`).join('')}</div><small>„Niedrig“ schaltet Schatten und Kantenglättung ab (Neustart der Seite empfohlen).</small></div>
-      <div class="setc"><h3>Steuerung</h3><p class="touch-only">📱 <b>Linker Daumen:</b> irgendwo links auf den Bildschirm tippen und ziehen = bewegen.<br>🔴 <b>Angriff:</b> kurz tippen = Auto-Aim, ziehen = selbst zielen.<br>⭐ <b>Super</b> genauso · 🟢 <b>Gadget</b> · 🌈 <b>FORM</b> = Transformation, sobald voll.</p><label class="adm-tg"><input type="checkbox" class="vib" ${s.vibrate !== false ? 'checked' : ''}> Vibration bei Treffern</label><div class="keys desk-only"><span><kbd>W A S D</kbd> Bewegen</span><span><kbd>Maus</kbd> Zielen</span><span><kbd>Linksklick</kbd> Angriff</span><span><kbd>Rechtsklick</kbd>/<kbd>Leertaste</kbd> Super</span><span><kbd>E</kbd> Gadget</span><span><kbd>F</kbd>/<kbd>Q</kbd> Transformation</span><span><kbd>1–4</kbd> Pins</span><span><kbd>Esc</kbd> Match verlassen</span></div><small>Touch: linker Joystick bewegt; Angriff/Super ziehen zum Zielen, tippen für Auto-Aim.</small></div>
+      <div class="setc"><h3>Steuerung</h3><p class="touch-only">📱 <b>Linker Daumen:</b> irgendwo links auf den Bildschirm tippen und ziehen = bewegen.<br>🔴 <b>Angriff:</b> kurz tippen = Auto-Aim, ziehen = selbst zielen.<br>⭐ <b>Super</b> genauso · 🟢 <b>Gadget</b> · 🌈 <b>FORM</b> = Transformation, sobald voll.</p><label class="adm-tg"><input type="checkbox" class="vib" ${s.vibrate !== false ? 'checked' : ''}> Vibration bei Treffern</label><label class="adm-tg"><input type="checkbox" class="cuts" ${s.cutscenes !== false ? 'checked' : ''}> Ultimate-Cutscenes</label><label class="adm-row"><span>Bot-Schwierigkeit</span><select class="botlvl">${[['easy', 'Leicht'], ['normal', 'Normal'], ['hard', 'Schwer']].map(([k, n]) => `<option value="${k}" ${(s.botLevel ?? 'normal') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label><div class="keys desk-only"><span><kbd>W A S D</kbd> Bewegen</span><span><kbd>Maus</kbd> Zielen</span><span><kbd>Linksklick</kbd> Angriff</span><span><kbd>Rechtsklick</kbd>/<kbd>Leertaste</kbd> Super</span><span><kbd>E</kbd> Gadget</span><span><kbd>F</kbd>/<kbd>Q</kbd> Transformation</span><span><kbd>1–4</kbd> Pins</span><span><kbd>Esc</kbd> Match verlassen</span></div><small>Touch: linker Joystick bewegt; Angriff/Super ziehen zum Zielen, tippen für Auto-Aim.</small></div>
       <div class="setc"><h3>Code einlösen</h3><p>Gib einen Code ein, um Belohnungen freizuschalten.</p><div class="row"><input class="inp codeinp" maxlength="16" placeholder="Code"><button class="btn green redeem">Einlösen</button></div></div>
       <div class="setc"><h3>Account</h3><p>Angemeldet als <b>${esc(Save.data.player.name)}</b>${Accounts.isOwner() ? ' 👑' : ''}. Jeder Account hat einen eigenen Spielstand auf diesem Gerät.</p>
         <div class="row"><button class="btn blue switchacc">Account wechseln</button><input class="inp sm newpin" type="password" inputmode="numeric" maxlength="8" placeholder="Neue PIN"><button class="btn ghost setpin">PIN setzen</button></div>
@@ -613,6 +633,8 @@ function settings(app) {
   ui.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { s.quality = b.dataset.q; Save.save(); app.applyQuality(); settings(app); });
   ui.querySelector('.switchacc').onclick = () => app.logout();
   ui.querySelector('.vib').onchange = (e) => { s.vibrate = e.target.checked; Save.save(); };
+  ui.querySelector('.cuts').onchange = (e) => { s.cutscenes = e.target.checked; Save.save(); };
+  ui.querySelector('.botlvl').onchange = (e) => { s.botLevel = e.target.value; Save.save(); };
   ui.querySelector('.setpin').onclick = async () => { const err = await Accounts.setPin(Save.accountId, ui.querySelector('.newpin').value.trim()); app.toast(err || 'PIN gespeichert', err ? '' : 'gold'); };
   ui.querySelector('.delacc')?.addEventListener('click', () => { const m = app.modal(`<h2>Account löschen?</h2><p>„${esc(Save.data.player.name)}“ und der gesamte Spielstand werden von diesem Gerät gelöscht.</p><div class="row"><button class="btn ghost no">Abbrechen</button><button class="btn red yes">Löschen</button></div>`); m.el.querySelector('.no').onclick = () => m.close(); m.el.querySelector('.yes').onclick = () => { Accounts.remove(Save.accountId); m.close(); app.logout(); }; });
   ui.querySelector('.redeem').onclick = () => { const r = redeemCode(ui.querySelector('.codeinp').value); app.toast(r.text, r.ok ? 'gold' : ''); if (r.ok) { sfx('unlock'); settings(app); } };

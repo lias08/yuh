@@ -43,6 +43,6 @@ const byAnime = {}; for (const c of ROSTER) byAnime[c.anime] = (byAnime[c.anime]
 console.log(`characters: ${ROSTER.length}`, byAnime);
 console.log('rarities:', Object.fromEntries(Object.keys(RARITIES).map(r => [r, ROSTER.filter(c => c.rarity === r).length])));
 console.log('two-stage forms:', ROSTER.filter(c => c.trans?.next).map(c => c.id).join(', '));
-if (ROSTER.length !== 50) errors.push('expected 50 characters, got ' + ROSTER.length);
+if (ROSTER.length < 60) errors.push('expected at least 60 characters, got ' + ROSTER.length);
 if (errors.length) { console.error('ERRORS:\n' + errors.join('\n')); process.exit(1); }
 console.log('roster OK');

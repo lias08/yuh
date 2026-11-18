@@ -1,7 +1,7 @@
 # ANIME BRAWL – ULTIMATE CLASH
 
 A playable 3D anime arena brawler for the browser, phone or desktop: 3v3 top-down
-fights with 50 fighters from Jujutsu Kaisen, Dragon Ball, Naruto, Bleach and One Piece. The
+fights with 60 fighters from Jujutsu Kaisen, Dragon Ball, Naruto, Bleach, One Piece, My Hero Academia and Demon Slayer. The
 centrepiece is the **transformation system**. Every fighter changes model, moveset, stats and
 playstyle when transformed, and seven fighters have a second stage (e.g. Goku: Super Saiyan Blue →
 Ultra Instinct, Ichigo: True Bankai → Horn of Salvation).
@@ -26,7 +26,7 @@ npm run check:data # validates all 50 character kits
 
 ## Android APK
 
-A signed release APK is in `release/AnimeBrawl-UltimateClash-v1.1.0.apk` (≈3.9 MB, Android 7+ / API 24+, landscape, fullscreen, fully offline).
+A signed release APK is in `release/AnimeBrawl-UltimateClash-v1.2.0.apk` (≈3.9 MB, Android 7+ / API 24+, landscape, fullscreen, fully offline).
 Install it by copying it to your phone and opening it (allow "install from unknown sources").
 
 Build it yourself (needs JDK 21 and the Android SDK, `ANDROID_HOME` set):
@@ -35,6 +35,12 @@ npm run android:sync                      # vite build + copy into android/
 cd android && ./gradlew assembleRelease   # → android/app/build/outputs/apk/release/app-release.apk
 ```
 For a signed build, create `android/keystore.properties` (storeFile, storePassword, keyAlias, keyPassword). Without it Gradle produces an unsigned APK. The keystore is deliberately not in the repository.
+
+## Cutscenes, voices, difficulty
+
+- Ultimates of Mythic/Legendary/Divine fighters (and every Super while transformed) play a short **cutscene**: time freezes, the camera moves in front of the fighter, with cinema bars, speed lines and the attack name. This can be switched off in Settings.
+- **Voices:** the game contains no original voice actor audio from the anime (copyrighted). Under fighter → "Stimme" you can record your own 3-second lines for Super, transformation and victory with the microphone; they are stored on the device and played in battle. Attack names appear as speech bubbles.
+- Bot difficulty is selectable in Settings (easy / normal / hard), and gameplay is about 15 % slower overall than in v1.1.
 
 ## Accounts & owner
 

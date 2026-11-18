@@ -500,3 +500,34 @@ html:not(.touch) .touch-only { display: none; }
 .touch .tr-dps { top: auto; bottom: calc(10px + var(--safe-b)); font-size: 11px; opacity: .85; }
 .touch .ubar .nm { font-size: 10px; }
 .touch .hud-count { font-size: 76px; }
+
+/* ---------------- ultimate cutscene ---------------- */
+.cutscene { position: absolute; inset: 0; pointer-events: none; z-index: 30; animation: fadeIn .12s; }
+.cutscene.out { animation: fadeOut .3s forwards; }
+.cs-lines { position: absolute; inset: -20%; background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,.22) 0 1.2deg, transparent 1.2deg 7deg); mask: radial-gradient(circle, transparent 28%, #000 62%); -webkit-mask: radial-gradient(circle, transparent 28%, #000 62%); animation: spin 2.4s linear infinite; mix-blend-mode: screen; }
+.cs-bar { position: absolute; left: 0; right: 0; height: 13%; background: #050308; } .cs-bar.top { top: 0; animation: barT .25s ease-out; } .cs-bar.bot { bottom: 0; animation: barB .25s ease-out; }
+@keyframes barT { from { transform: translateY(-100%); } } @keyframes barB { from { transform: translateY(100%); } }
+.cs-text { position: absolute; left: 6%; bottom: 17%; transform: skewX(-8deg); animation: csText var(--d) cubic-bezier(.2,.9,.3,1) both; }
+.cs-who { font-size: 16px; color: #fff; text-shadow: 0 2px 0 #000; letter-spacing: 2px; text-transform: uppercase; }
+.cs-name { font-family: var(--disp); font-size: clamp(30px, 6vw, 60px); color: #fff; line-height: 1; text-shadow: 0 4px 0 rgba(0,0,0,.6), 0 0 26px var(--c), 0 0 60px var(--c); background: linear-gradient(90deg, var(--c), transparent); padding: 6px 40px 6px 12px; }
+@keyframes csText { 0% { opacity: 0; transform: translateX(-60px) skewX(-8deg); } 15% { opacity: 1; transform: skewX(-8deg); } 85% { opacity: 1; } 100% { opacity: 0; transform: translateX(30px) skewX(-8deg); } }
+.cs-flash { position: absolute; inset: 0; background: radial-gradient(circle, var(--c), transparent 65%); opacity: 0; animation: csFlash var(--d) forwards; mix-blend-mode: screen; }
+@keyframes csFlash { 0%, 80% { opacity: 0; } 92% { opacity: .9; } 100% { opacity: 0; } }
+.hud.in-cut .ubar, .hud.in-cut .hud-top, .hud.in-cut .tc-btn, .hud.in-cut .hud-pins, .hud.in-cut .hud-exit, .hud.in-cut .tr-panel, .hud.in-cut .tr-dps, .hud.in-cut .pop { opacity: 0; transition: opacity .15s; }
+.bubble { position: absolute; left: 0; top: 0; background: #fff; color: #1a1224; font-weight: 900; font-size: 12px; padding: 4px 10px; border-radius: 12px; white-space: nowrap; box-shadow: 0 3px 0 rgba(0,0,0,.35); pointer-events: none; will-change: transform; }
+.bubble::after { content: ''; position: absolute; left: 50%; bottom: -6px; margin-left: -6px; border: 6px solid transparent; border-top-color: #fff; border-bottom: 0; }
+.bubble.big { font-family: var(--disp); font-weight: 400; font-size: 15px; background: linear-gradient(180deg, #fff27a, #ffb21f); }
+.bubble.big::after { border-top-color: #ffb21f; }
+
+.vslot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px; border-radius: 14px; background: rgba(255,255,255,.05); margin: 8px 0; }
+.vslot .vt { flex: 1; min-width: 150px; } .vslot small { display: block; color: var(--mut); font-size: 11px; }
+.vmeter { width: 70px; height: 8px; border-radius: 4px; background: rgba(0,0,0,.4); overflow: hidden; } .vmeter i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #3ddc84, #ffd23f, #ff3b5c); transition: width .05s; }
+
+/* ---------------- title screen ---------------- */
+.title-screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; background: radial-gradient(circle at 50% 45%, rgba(90,60,200,.35), rgba(8,6,20,.92) 75%); cursor: pointer; overflow: hidden; }
+.title-screen.out { animation: fadeOut .26s forwards; }
+.ts-rays { position: absolute; width: 160vmax; height: 160vmax; background: repeating-conic-gradient(from 0deg, rgba(255,210,63,.08) 0 6deg, transparent 6deg 18deg); animation: spin 30s linear infinite; }
+.ts-logo { position: relative; font-family: var(--disp); font-size: clamp(48px, 9vw, 96px); text-align: center; line-height: .95; background: linear-gradient(180deg, #fff 25%, #ffd23f 65%, #ff8a2a); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 6px 0 #2a1458) drop-shadow(0 0 30px rgba(255,170,40,.4)); animation: popIn .7s cubic-bezier(.2,.9,.3,1.4) both; }
+.ts-logo small { display: block; font-size: .32em; letter-spacing: .3em; margin-top: 6px; }
+.ts-tap { position: relative; font-family: var(--disp); font-size: 22px; color: #fff; text-shadow: 0 3px 0 rgba(0,0,0,.5); animation: pulse 1.4s ease-in-out infinite; }
+.ts-ver { position: absolute; bottom: calc(10px + var(--safe-b)); right: calc(14px + var(--safe-r)); font-size: 11px; color: var(--mut); }

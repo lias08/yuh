@@ -93,8 +93,8 @@ export class Hud {
     // popups
     for (let i = this.popList.length - 1; i >= 0; i--) {
       const p = this.popList[i]; p.t += world.dt || 0.016;
-      v3.copy(p.pos); v3.y += p.t * 1.2; v3.project(cam);
-      p.el.style.transform = `translate(${(v3.x * 0.5 + 0.5) * W}px, ${(-v3.y * 0.5 + 0.5) * H}px) translate(-50%, -50%) scale(${p.size * (p.t < 0.08 ? 1.4 : 1)})`;
+      v3.copy(p.pos); v3.y += p.bubble ? 0 : p.t * 1.2; v3.project(cam);
+      p.el.style.transform = `translate(${(v3.x * 0.5 + 0.5) * W}px, ${(-v3.y * 0.5 + 0.5) * H}px) translate(-50%, -50%) scale(${p.bubble ? (p.t < -0.42 ? 0.6 + (p.t + 0.5) * 5 : 1) : p.size * (p.t < 0.08 ? 1.4 : 1)})`;
       p.el.style.opacity = Math.max(0, 1 - Math.max(0, p.t - 0.5) / 0.4);
       if (p.t > 0.9) { p.el.remove(); this.popList.splice(i, 1); }
     }
@@ -161,6 +161,24 @@ export class Hud {
     d.innerHTML = `<div class="stripe"></div><div class="who">${who}</div><div class="fn">${name}</div>`;
     this.ann.appendChild(d);
     setTimeout(() => d.remove(), 2000);
+  }
+  cutscene(f, act, color, dur) {
+    this.cutEl?.remove();
+    const d = document.createElement('div');
+    d.className = 'cutscene';
+    d.style.setProperty('--c', color); d.style.setProperty('--d', dur + 's');
+    d.innerHTML = `<div class="cs-lines"></div><div class="cs-bar top"></div><div class="cs-bar bot"></div>
+      <div class="cs-text"><div class="cs-who">${f.name}</div><div class="cs-name">${act.name ?? ''}</div></div><div class="cs-flash"></div>`;
+    this.root.appendChild(d); this.cutEl = d;
+    this.root.classList.add('in-cut');
+  }
+  cutsceneEnd() { const d = this.cutEl; this.root.classList.remove('in-cut'); if (d) { d.classList.add('out'); setTimeout(() => d.remove(), 350); } this.cutEl = null; }
+  bubble(f, text, big) {
+    const d = document.createElement('div');
+    d.className = 'bubble' + (big ? ' big' : '');
+    d.textContent = text.length > 34 ? text.slice(0, 32) + '…' : text;
+    this.pops.appendChild(d);
+    this.popList.push({ el: d, pos: new THREE.Vector3(f.x, (f.rig?.height ?? 1.3) + 0.75, f.z), t: -0.5, size: 1, bubble: true });
   }
   count(c) {
     this.countEl.textContent = c;

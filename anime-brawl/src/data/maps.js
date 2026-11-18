@@ -203,17 +203,17 @@ export const THEMES = {
 };
 
 export const MODES = {
-  crystal: { id: 'crystal', name: 'Kristallrausch', short: 'Kristalle', map: 'crystal', teams: 2, size: 3, time: 150, respawn: 5, icon: '💎', color: '#b45cff',
+  crystal: { id: 'crystal', name: 'Kristallrausch', short: 'Kristalle', map: 'crystal', teams: 2, size: 3, time: 165, respawn: 5, icon: '💎', color: '#b45cff',
     desc: '3 gegen 3. Sammelt 10 Seelenkristalle aus der Mine und haltet sie, bis der Countdown abläuft. Wer besiegt wird, lässt seine Kristalle fallen.' },
-  ball: { id: 'ball', name: 'Spirit Ball', short: 'Ball', map: 'ball', teams: 2, size: 3, time: 150, respawn: 5, icon: '⚽', color: '#3b9cff',
+  ball: { id: 'ball', name: 'Spirit Ball', short: 'Ball', map: 'ball', teams: 2, size: 3, time: 165, respawn: 5, icon: '⚽', color: '#3b9cff',
     desc: '3 gegen 3. Trag oder schieß den Ball ins gegnerische Tor. Zwei Tore gewinnen. Mit Ball kann man nicht angreifen — aber schießen (Angriff) und passen.' },
   showdown: { id: 'showdown', name: 'Überleben', short: 'Solo', map: 'showdown', teams: 10, size: 1, time: 240, respawn: 0, icon: '☠', color: '#3ddc84',
     desc: 'Jeder gegen jeden, 10 Kämpfer. Zerstöre Kisten für Kraftwürfel (+10 % Schaden & LP). Giftwolken ziehen sich zusammen. Der Letzte gewinnt.' },
   duo: { id: 'duo', name: 'Duo-Überleben', short: 'Duo', map: 'showdown', teams: 5, size: 2, time: 240, respawn: 8, icon: '👥', color: '#3ddc84',
     desc: '5 Teams à 2. Solange dein Partner lebt, kehrst du nach 8 s zurück. Das letzte Duo gewinnt.' },
-  vault: { id: 'vault', name: 'Tresorraub', short: 'Tresor', map: 'vault', teams: 2, size: 3, time: 150, respawn: 5, icon: '🏦', color: '#ff8a2a',
+  vault: { id: 'vault', name: 'Tresorraub', short: 'Tresor', map: 'vault', teams: 2, size: 3, time: 165, respawn: 5, icon: '🏦', color: '#ff8a2a',
     desc: '3 gegen 3. Zerstört den gegnerischen Tresor, bevor sie euren knacken. Bei Zeitablauf gewinnt, wer mehr Schaden am Tresor verursacht hat.' },
-  zone: { id: 'zone', name: 'Zonenkontrolle', short: 'Zone', map: 'zone', teams: 2, size: 3, time: 150, respawn: 5, icon: '◎', color: '#ffd23f',
+  zone: { id: 'zone', name: 'Zonenkontrolle', short: 'Zone', map: 'zone', teams: 2, size: 3, time: 165, respawn: 5, icon: '◎', color: '#ffd23f',
     desc: '3 gegen 3. Steht in der Zone, um sie für euer Team zu erobern. Erstes Team mit 100 % gewinnt.' },
   knockout: { id: 'knockout', name: 'Knockout', short: 'K.O.', map: 'knockout', teams: 2, size: 3, time: 90, respawn: 0, icon: '✖', color: '#ff3b5c',
     desc: '3 gegen 3, ohne Wiederbelebung. Wer das gegnerische Team zuerst auslöscht, gewinnt die Runde. Zwei Runden gewinnen das Match.' },

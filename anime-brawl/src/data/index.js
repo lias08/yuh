@@ -3,6 +3,8 @@ import db from './roster/db.js';
 import naruto from './roster/naruto.js';
 import bleach from './roster/bleach.js';
 import op from './roster/onepiece.js';
+import mha from './roster/mha.js';
+import ds from './roster/demonslayer.js';
 
 export const ANIME = {
   jjk: { name: 'Jujutsu Kaisen', short: 'JJK', color: '#6a5aff' },
@@ -10,6 +12,8 @@ export const ANIME = {
   naruto: { name: 'Naruto', short: 'Naruto', color: '#ff6a1a' },
   bleach: { name: 'Bleach', short: 'Bleach', color: '#3aa8ff' },
   op: { name: 'One Piece', short: 'One Piece', color: '#e8323a' },
+  mha: { name: 'My Hero Academia', short: 'MHA', color: '#2ea86a' },
+  ds: { name: 'Demon Slayer', short: 'Demon Slayer', color: '#2ab8a8' },
 };
 
 export const RARITIES = {
@@ -22,7 +26,7 @@ export const RARITIES = {
   divine: { name: 'Divine', de: 'Göttlich', color: '#ffffff', glow: '#fff6d8', order: 6, price: 6000, gemPrice: 600 },
 };
 
-export const ROSTER = [...jjk, ...db, ...naruto, ...bleach, ...op];
+export const ROSTER = [...jjk, ...db, ...naruto, ...bleach, ...op, ...mha, ...ds];
 export const BY_ID = Object.fromEntries(ROSTER.map(c => [c.id, c]));
 export const getChar = (id) => BY_ID[id];
 

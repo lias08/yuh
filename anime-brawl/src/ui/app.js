@@ -12,12 +12,14 @@ import { Hud } from '../game/hud.js';
 import { Input, AimIndicator } from '../game/input.js';
 import { SCREENS } from './screens.js';
 import { Accounts } from '../core/accounts.js';
+import { Voice } from '../core/voice.js';
 import { App as CapApp } from '@capacitor/app';
 import { LocalTransport } from '../net/transport.js';
 
 const RARITY_HEX = (r) => parseInt(RARITIES[r].color.slice(1), 16);
 // debug flags via URL: ?autoplay=1 (player controlled by AI), ?sim=N (N simulation steps per frame, no rendering)
 const QS = new URLSearchParams(location.search);
+export const APP_VERSION = '1.2.0';
 export const TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 if (TOUCH) document.documentElement.classList.add('touch');
 export const DEBUG = { autoplay: QS.has('autoplay'), sim: +(QS.get('sim') || 0) };
@@ -48,13 +50,23 @@ export class App {
     setVolumes(Save.data.settings.sfx, Save.data.settings.music);
     document.addEventListener('pointerdown', () => { initAudio(); if (!this.world) music('lobby'); }, { once: true });
     this.setStageChar();
+    Voice.setOwner(Accounts.db.current);
     this.initMobile();
-    if (Accounts.current()) this.show('lobby'); else this.show('accounts');
+    this.titleScreen(() => { if (Accounts.current()) this.show('lobby'); else this.show('accounts'); });
     requestAnimationFrame((t) => this.loop(t));
+  }
+  titleScreen(next) {
+    if (DEBUG.autoplay || DEBUG.sim || new URLSearchParams(location.search).has('skipTitle')) { next(); return; }
+    this.ui.className = 'ui screen-title';
+    this.ui.innerHTML = `<div class="title-screen"><div class="ts-rays"></div><div class="ts-logo">ANIME BRAWL<small>ULTIMATE CLASH</small></div><div class="ts-tap">Tippen zum Starten</div><div class="ts-ver">v${APP_VERSION} · Fan-Projekt</div></div>`;
+    this.stage.offsetX = 0;
+    const go = () => { initAudio(); sfx('start'); music('lobby'); this.ui.querySelector('.title-screen')?.classList.add('out'); setTimeout(next, 260); };
+    this.ui.querySelector('.title-screen').addEventListener('pointerdown', go, { once: true });
   }
   /** switch to an account's save slot and go to the lobby */
   enterAccount(id, isNew = false) {
     Save.load(id);
+    Voice.setOwner(id);
     if (isNew && TOUCH) Save.data.settings.quality = 'medium';
     Save.save();
     this.applyQuality();
@@ -146,7 +158,7 @@ export class App {
     const skin = skinsFor(def).find(s => s.id === mb.skin);
     const tr = mb.trophies ?? 0;
     const r = seeded(Date.now());
-    const lvl = () => Math.max(1, Math.min(11, Math.round(mb.level + (r() - 0.5) * 2)));
+    const lvl = () => Math.max(1, Math.min(11, mb.level - (r() < 0.6 ? 1 : 0)));
     const pickDef = (exclude) => { let c; do { c = ROSTER[Math.floor(r() * ROSTER.length)]; } while (exclude.has(c.id)); exclude.add(c.id); return c; };
     const used = new Set([myId]);
     const bot = (team, defX, nameX) => ({ def: defX, team, level: lvl(), name: nameX ?? botName(r), gadget: r() < 0.6 && lvl() >= 5 ? Math.floor(r() * 2) : -1, starPower: lvl() >= 7 ? Math.floor(r() * 2) : -1, gears: [] });
@@ -167,7 +179,7 @@ export class App {
     for (let i = 0; i < 3; i++) L.push(bot(1, pickDef(used)));
     return L;
   }
-  difficulty() { const tr = bData(Save.data.selected)?.trophies ?? 0; return Math.min(0.92, 0.3 + tr / 1400); }
+  difficulty() { const tr = bData(Save.data.selected)?.trophies ?? 0; const base = { easy: 0.08, normal: 0.2, hard: 0.38 }[Save.data.settings.botLevel ?? 'normal']; return Math.min(0.8, base + tr / 2600); }
   pickTheme(modeId) {
     const keys = Object.keys(THEMES);
     const hour = Math.floor(Date.now() / 3600000);
@@ -212,6 +224,8 @@ export class App {
       onEnd: (res) => this.endMatch(res), onExit: () => this.exitMatch(),
       onTrainingSwitch: () => this.trainingSwitch(),
       autoplay: DEBUG.autoplay,
+      cutscenes: Save.data.settings.cutscenes !== false,
+      voice: (id, slot) => Voice.play(id, slot),
     });
     hud.onPin = (i) => world.player && hud.pin(world.player, i);
     hud.vibrate = Save.data.settings.vibrate !== false;

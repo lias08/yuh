@@ -41,6 +41,8 @@ export function looksFor(def, skin) {
   return out;
 }
 
+export const PACE = { move: 0.84, reload: 1.15, proj: 0.82 };
+
 let UID = 1;
 
 export class Unit {
@@ -151,8 +153,8 @@ export class Fighter extends Unit {
     let hpM = 1, spM = 1, rlM = 1;
     for (const p of hooks) if (p.type === 'stat') { hpM *= p.hp ?? 1; spM *= p.speed ?? 1; rlM *= p.reload ?? 1; }
     if (this.formDef?.stats) { spM *= this.formDef.stats.speed ?? 1; rlM *= this.formDef.stats.reload ?? 1; hpM *= this.formDef.stats.hp ?? 1; if (this.formDef.stats.ammo) s.ammo = this.formDef.stats.ammo; }
-    s.speed = (s.speed ?? 3.2) * spM;
-    s.reload = (s.reload ?? 1.6) * rlM;
+    s.speed = (s.speed ?? 3.2) * spM * PACE.move;
+    s.reload = (s.reload ?? 1.6) * rlM * PACE.reload;
     this.stats = s;
     const newMax = (s.hp ?? 4000) * lv * hpM;
     if (this.maxHp) this.hp = this.hp * (newMax / this.maxHp);
@@ -186,7 +188,7 @@ export class Fighter extends Unit {
   nudge(dx, dz) { const p = this.world.grid.resolve(this.x + dx, this.z + dz, this.r); this.x = p.x; this.z = p.z; }
   teleport(x, z) { const p = this.world.grid.resolve(x, z, this.r); this.x = p.x; this.z = p.z; this.dash = null; this.knockV = null; }
   startDash(d) {
-    this.dash = { ...d, done: 0, hit: new Set() };
+    this.dash = { ...d, speed: d.speed * PACE.proj, done: 0, hit: new Set() };
     if (d.invuln) this.addStatus('invuln', d.dist / d.speed + 0.05);
     this.playAnim(d.jump ? 'raise' : 'dash', d.dist / d.speed + 0.15);
   }
@@ -223,7 +225,14 @@ export class Fighter extends Unit {
     this.reveal = 1.5; this.combatT = 0;
     this.setFace(aim);
     this.stats_.supers++;
-    execute(this.world, this, this.superAct, { kind: 'super', aim, dist, tx: this.x + aim.x * dist, tz: this.z + aim.z * dist, overdrive: over });
+    const act = this.superAct;
+    const fire = () => execute(this.world, this, act, { kind: 'super', aim, dist, tx: this.x + aim.x * dist, tz: this.z + aim.z * dist, overdrive: over });
+    this.world.callout(this, act.name, true);
+    const sc = act.color ?? this.formDef?.aura ?? this.def.trans?.aura ?? 0xffd23f;
+    this.world.vfx.flashLight({ x: this.x, z: this.z }, sc, 8, 0.4, 6);
+    this.world.vfx.ring({ x: this.x, z: this.z }, { color: sc, r0: 0.3, r1: 2.2, life: 0.4 });
+    if (this.world.wantsCutscene(this, act)) this.world.cutscene(this, act, fire);
+    else fire();
     for (const p of this.hooks) {
       if (p.type === 'shieldOnSuper') this.addShield((p.amt ?? 800) * this._lv, p.t ?? 3);
       if (p.type === 'speedOnSuper') this.addStatus('speed', p.t ?? 3, p.mult ?? 0.25);

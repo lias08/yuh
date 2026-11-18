@@ -41,7 +41,7 @@ export class Projectile {
     this.world = world; this.src = src; this.team = src.team; this.act = act; this.ctx = ctx;
     this.x = x; this.z = z; this.y = act.y ?? 0.65;
     this.dx = dx; this.dz = dz;
-    this.speed = act.speed ?? 14;
+    this.speed = (act.speed ?? 14) * 0.82;
     this.range = act.range ?? 7;
     this.travel = 0;
     this.r = act.w ?? 0.25;

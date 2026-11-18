@@ -288,6 +288,7 @@ export class World {
       const col = crit ? '#ffe14a' : info.dot ? '#ffa060' : me ? '#ff5a6a' : mine ? '#ffffff' : '#e8e8f0';
       if (!info.dot || amount > 60) this.popNumber(tgt, Math.round(amount), col, crit ? 1.5 : amount > 1500 ? 1.3 : 1);
       if (crit) sfx('crit'); else if (mine || me) sfx(amount > 1200 ? 'hitHeavy' : 'hit');
+      if (!info.dot && tgt.kind !== 'structure') this.vfx.hitSpark({ x: tgt.x, y: (tgt.rig?.height ?? 1.2) * 0.55, z: tgt.z }, info.dir, info.color ?? 0xffffff, info.kind === 'super' ? 2 : crit ? 1.6 : 0.8);
       if (me) this.hud?.hurt();
       if (amount > 1500) this.vfx.shake(0.12);
     }
@@ -402,6 +403,8 @@ export class World {
     const T = f.transformed && f.def.trans?.next ? f.def.trans.next : f.def.trans;
     const near = f.isPlayer || Math.hypot(f.x - (this.player?.x ?? 0), f.z - (this.player?.z ?? 0)) < 10;
     sfx('transform');
+    this.o.voice?.(f.def.id, 'trans');
+    if (near) this.hud?.bubble(f, T.name, true);
     const aura = T.aura ?? 0xffffff;
     this.vfx.pillar({ x: f.x, z: f.z }, { color: aura, r: 1.0, h: 10, life: 1.1 });
     for (let i = 0; i < 3; i++) this.schedule(i * 0.25, () => this.vfx.ring({ x: f.x, z: f.z }, { color: aura, r0: 2.2, r1: 0.2, life: 0.35 }));
@@ -439,7 +442,60 @@ export class World {
     this.aspect = w / h;
   }
 
+  // ---- ultimate cutscenes --------------------------------------------------------------
+  wantsCutscene(f, act) {
+    if (!f.isPlayer || this.o.cutscenes === false || this.mode.cfg.id === 'training' && this.o.cutscenes === 'off') return false;
+    if (act.cutscene === false) return false;
+    if (act.cutscene) return true;
+    const big = ['divine', 'legendary', 'mythic'].includes(f.def.rarity) || f.transformed;
+    return big && this.time - (this.lastCut ?? -99) > 8;
+  }
+  cutscene(f, act, fire) {
+    this.lastCut = this.time;
+    const FD = f.formDef;
+    const color = act.color ?? FD?.aura ?? f.def.trans?.aura ?? 0xffd23f;
+    const dur = 1.45;
+    this.cut = { f, t: 0, dur, fire, color, face: f.face };
+    f.face = Math.PI / 2; // turn towards the camera
+    f.addStatus('invuln', dur + 0.4);
+    f.playAnim(act.anim === 'kame' || act.anim === 'beam' ? 'kame' : 'raise', dur);
+    this.hud?.cutscene(f, act, '#' + new THREE.Color(color).getHexString(), dur);
+    sfx('transform');
+  }
+  updateCutscene(rawDt) {
+    const c = this.cut, f = c.f;
+    c.t += rawDt;
+    // only the caster animates; the rest of the world is frozen
+    f.animate(rawDt * 0.9);
+    if (Math.random() < 0.9) this.vfx.auraTick(f.rig.auraAnchor.getWorldPosition(new THREE.Vector3()), c.color, rawDt, 2.2, 1.4);
+    this.vfx.update(rawDt);
+    // camera: low dramatic angle in front of the fighter, slow push-in
+    const k = Math.min(1, c.t / c.dur), e = 1 - Math.pow(1 - k, 3);
+    const h = f.rig.height;
+    const dist = 3.0 - e * 0.9, side = 0.8 - e * 0.5;
+    this.camera.position.set(f.x + side, h * (0.75 + 0.35 * (1 - e)), f.z + dist);
+    this.camera.lookAt(f.x, h * 0.6, f.z);
+    this.arena.setFocus(f.x, f.z, true);
+    if (c.t >= c.dur) {
+      this.cut = null;
+      f.face = c.face;
+      this.hud?.cutsceneEnd();
+      this.vfx.sphere({ x: f.x, y: 0.9, z: f.z }, { color: 0xffffff, r0: 0.4, r1: 3, life: 0.3, opacity: 0.85 });
+      this.vfx.shake(0.45);
+      c.fire();
+    }
+  }
+  /** speech bubble over a fighter (attack name shout) + optional custom voice */
+  callout(f, text, big = false) {
+    if (!text || !f.alive) return;
+    const near = f.isPlayer || Math.hypot(f.x - (this.player?.x ?? 0), f.z - (this.player?.z ?? 0)) < 9;
+    if (!near) return;
+    this.hud?.bubble(f, text, big);
+    if (f.isPlayer || near) this.o.voice?.(f.def.id, big ? 'super' : 'attack', f.isPlayer);
+  }
+
   update(rawDt) {
+    if (this.cut) { this.updateCutscene(Math.min(0.05, rawDt)); this.hud?.update(this); return; }
     let dt = Math.min(0.05, rawDt);
     if (this.hitStopT > 0) { this.hitStopT -= dt; dt *= 0.12; }
     if (this.slowmo) { this.slowmo.t += rawDt; if (this.slowmo.t > this.slowmo.dur) this.slowmo = null; else dt *= 0.3; }
@@ -561,6 +617,7 @@ export class World {
     setTimeout(() => this.o.onEnd && this.o.onEnd(this.buildResult(result)), 2600);
     this.hud?.announce(result.winners?.includes(this.playerTeam) ? 'SIEG!' : result.draw ? 'UNENTSCHIEDEN' : 'NIEDERLAGE', result.reason ?? '', result.winners?.includes(this.playerTeam) ? '#ffd23f' : '#ff3b5c');
     sfx(result.winners?.includes(this.playerTeam) ? 'win' : 'lose');
+    if (result.winners?.includes(this.playerTeam) && this.player) setTimeout(() => this.o.voice?.(this.player.def.id, 'win'), 700);
   }
   buildResult(r) {
     const p = this.player;

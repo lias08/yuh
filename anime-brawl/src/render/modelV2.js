@@ -212,6 +212,19 @@ export function buildHumanV2(look, opts, helpers) {
     }
   }
   if (ex('hornLong')) { const hm = M(look.hornColor ?? 0xf4f2ee, { rim: 0.7 }); for (const s of [-1, 1]) { const h = ink(curvedHorn(0.045, 0.62, s), hm, 0.01); h.position.set(s * R * 0.6, R * 0.85, -0.04); h.rotation.set(-0.45, 0, -s * 0.45); headG.add(h); } }
+  if (ex('boarHead')) { // Inosuke's boar mask
+    const bm = M(0x8a8a96, { rim: 0.6 }), fur = M(0x5a5a64);
+    const sk = ink(new THREE.SphereGeometry(R * 1.12, 28, 18), bm, 0.014); sk.scale.set(1, 1.05, 1.1); headG.add(sk);
+    const sn = ink(new THREE.CylinderGeometry(R * 0.36, R * 0.46, R * 0.7, 20), bm, 0.012); sn.rotation.x = Math.PI / 2; sn.position.set(0, -R * 0.2, R * 1.05); headG.add(sn);
+    const nose = new THREE.Mesh(new THREE.CircleGeometry(R * 0.34, 18), M(0x2a2a30)); nose.position.set(0, -R * 0.2, R * 1.41); headG.add(nose);
+    for (const s2 of [-1, 1]) {
+      const e = ink(new THREE.ConeGeometry(R * 0.2, R * 0.45, 10), fur, 0.01); e.position.set(s2 * R * 0.62, R * 0.9, 0); e.rotation.z = -s2 * 0.5; headG.add(e);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(R * 0.11, 10, 8), M(0x111116, { rim: 1, rimColor: 0xffffff })); eye.position.set(s2 * R * 0.38, R * 0.22, R * 1.0); headG.add(eye);
+      const tusk = ink(new THREE.ConeGeometry(R * 0.06, R * 0.32, 8), M(0xf2eee0), 0.008); tusk.position.set(s2 * R * 0.32, -R * 0.42, R * 1.2); tusk.rotation.set(0.6, 0, s2 * 0.4); headG.add(tusk);
+    }
+    const mane = ink(new THREE.SphereGeometry(R * 1.0, 18, 12), fur, 0.012); mane.position.set(0, R * 0.2, -R * 0.5); mane.scale.set(1.05, 1, 0.8); headG.add(mane);
+  }
+  if (ex('pelt')) { const pm = M(0x8a6a4a); for (const s2 of [-1, 1]) { const p2 = ink(new THREE.SphereGeometry(0.1, 12, 8), pm, 0.01); p2.position.set(s2 * B.hipW * 0.9, -0.03, 0.02); p2.scale.set(1, 1.3, 0.8); hips.add(p2); } }
   if (ex('catEars')) for (const s of [-1, 1]) { const e = ink(new THREE.ConeGeometry(0.085, 0.24, 12), skinM, 0.01); e.position.set(s * R * 0.6, R * 0.85, 0); e.rotation.z = -s * 0.32; headG.add(e); }
   if (ex('halfHelmet')) {
     const h = ink(new THREE.SphereGeometry(R * 1.1, 24, 14, 0, Math.PI, 0, Math.PI * 0.4), M(0xf2f0ea), 0.01); h.rotation.y = -Math.PI / 2 + 0.3; headG.add(h);

@@ -33,7 +33,7 @@ export class BotBrain {
   update(dt) {
     const f = this.f, w = this.w;
     this.think -= dt; this.pathT -= dt; this.strafeT -= dt; this.react -= dt; this.dodgeT -= dt;
-    if (this.think <= 0) { this.think = 0.22 + (1 - this.diff) * 0.25; this.decide(); }
+    if (this.think <= 0) { this.think = 0.35 + (1 - this.diff) * 0.45; this.decide(); }
     // movement intent
     let mx = 0, mz = 0;
     const tgt = this.target && this.target.alive ? this.target : null;
@@ -61,9 +61,9 @@ export class BotBrain {
     this.lastPos = { x: f.x, z: f.z };
     // aim + fire
     if (tgt) {
-      const lead = (Math.hypot(tgt.x - f.x, tgt.z - f.z) / 16) * this.diff;
+      const lead = (Math.hypot(tgt.x - f.x, tgt.z - f.z) / 16) * this.diff * 0.7;
       const tx = tgt.x + (tgt.vel?.x ?? 0) * lead, tz = tgt.z + (tgt.vel?.z ?? 0) * lead;
-      const err = (1 - this.diff) * 0.35 * (Math.random() - 0.5);
+      const err = (0.12 + (1 - this.diff) * 0.7) * (Math.random() - 0.5);
       let dx = tx - f.x, dz = tz - f.z; const d = Math.hypot(dx, dz) || 1;
       const a = Math.atan2(dz, dx) + err;
       const aim = { x: Math.cos(a), z: Math.sin(a) };
@@ -71,16 +71,16 @@ export class BotBrain {
       if (f.mainAct.kind === 'beam' || f.has('channel')) f.setFace(aim);
       const inRange = d <= range + tgt.r * 0.5 && w.grid.los(f.x, f.z, tgt.x, tgt.z);
       // transformation
-      if (f.transCharge >= 1 && d < 9 && f.cinematic < 0 && Math.random() < 0.08 + this.diff * 0.1) f.tryTransform();
+      if (f.transCharge >= 1 && d < 9 && f.cinematic < 0 && Math.random() < 0.02 + this.diff * 0.05) f.tryTransform();
       // super
       if (f.superCharge >= 1 && this.react <= 0) {
         const sa = f.superAct; const sr = actRange(sa);
         const crowd = w.unitsInRadius(f.x, f.z, sr, f.team).filter(u => u.kind !== 'structure').length;
         const selfCentered = sa.kind === 'nova' || sa.kind === 'domain' || sa.kind === 'summon' || sa.kind === 'buff';
-        if ((selfCentered && crowd >= 1) || (!selfCentered && d <= sr)) { f.useSuper(aim, Math.min(d, sr)); this.react = 0.5; }
+        if (((selfCentered && crowd >= 1) || (!selfCentered && d <= sr)) && Math.random() < 0.25 + this.diff * 0.5) { f.useSuper(aim, Math.min(d, sr)); this.react = 0.9; }
       }
       // gadget
-      if (f.gadgets > 0 && f.gadgetCd <= 0 && Math.random() < 0.02 + this.diff * 0.02) {
+      if (f.gadgets > 0 && f.gadgetCd <= 0 && Math.random() < 0.008 + this.diff * 0.015) {
         const g = f.gadgetAct;
         const heal = g && g.kind === 'buff' && (g.buff?.heal || g.buff?.healPct || g.buff?.shield || g.buff?.dr);
         if ((heal && f.hp / f.maxHp < 0.55) || (!heal && d < actRange(g))) f.useGadget(aim, d);
@@ -88,7 +88,7 @@ export class BotBrain {
       // main attack
       if (inRange && this.react <= 0 && f.ammo >= (main.ammoCost ?? 1)) {
         const keepAmmo = f.ammo < 1.6 && d > range * 0.8 && Math.random() < 0.6;
-        if (!keepAmmo && Math.random() < 0.35 + this.diff * 0.5) { f.attack(aim, d); this.react = 0.12 + (1 - this.diff) * 0.45 + Math.random() * 0.2; }
+        if (!keepAmmo && Math.random() < 0.22 + this.diff * 0.4) { f.attack(aim, d); this.react = 0.35 + (1 - this.diff) * 0.7 + Math.random() * 0.35; }
       }
     } else if (this.structTarget && this.structTarget.alive) {
       const s = this.structTarget; const dx = s.x - f.x, dz = s.z - f.z, d = Math.hypot(dx, dz) || 1;
@@ -107,7 +107,7 @@ export class BotBrain {
         const rx = f.x - p.x, rz = f.z - p.z; const along = rx * p.dx + rz * p.dz;
         if (along < 0 || along > 4) continue;
         const perp = rx * p.dz - rz * p.dx;
-        if (Math.abs(perp) < f.r + p.r + 0.3 && Math.random() < this.diff * 0.7) { const s = perp >= 0 ? 1 : -1; this.dodgeDir = { x: p.dz * s, z: -p.dx * s }; this.dodgeT = 0.3; break; }
+        if (Math.abs(perp) < f.r + p.r + 0.3 && Math.random() < this.diff * 0.35) { const s = perp >= 0 ? 1 : -1; this.dodgeDir = { x: p.dz * s, z: -p.dx * s }; this.dodgeT = 0.3; break; }
       }
     }
     // target

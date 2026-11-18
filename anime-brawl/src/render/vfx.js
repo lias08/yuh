@@ -73,6 +73,7 @@ const ringGeo = new THREE.RingGeometry(0.85, 1, 48);
 const discGeo = new THREE.CircleGeometry(1, 40);
 const sphereGeo = new THREE.SphereGeometry(1, 24, 16);
 const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 16, 1, true);
+const streakGeo = (() => { const g = new THREE.PlaneGeometry(1, 1); g.translate(0.5, 0, 0); return g; })();
 
 function crescentGeo(arc = 2.2, inner = 0.55) {
   const shape = new THREE.Shape();
@@ -93,6 +94,39 @@ export class VFX {
     this.fx = [];
     this.shakeAmt = 0;
     this.time = 0;
+    // a fixed pool of point lights for impact flashes (fixed count = no shader recompiles)
+    this.lights = [0, 1, 2].map(() => { const l = new THREE.PointLight(0xffffff, 0, 6, 2); l.position.y = 1.2; scene.add(l); return { l, t: 0, max: 1, i0: 0 }; });
+    this.li = 0;
+  }
+  /** brief coloured light flash at a point (lights up characters + floor) */
+  flashLight(p, color = 0xffffff, intensity = 6, life = 0.25, range = 6) {
+    const s = this.lights[this.li++ % this.lights.length];
+    s.l.color.setHex(color); s.l.position.set(p.x, (p.y ?? 0.6) + 0.6, p.z); s.l.distance = range;
+    s.t = life; s.max = life; s.i0 = intensity; s.l.intensity = intensity;
+  }
+  /** sharp impact: radial light streaks + spark points + small flash */
+  hitSpark(p, dir, color = 0xffffff, power = 1) {
+    const n = Math.round(5 + power * 4);
+    const base = dir ? Math.atan2(dir.z, dir.x) : Math.random() * 6.28;
+    for (let i = 0; i < n; i++) {
+      const a = base + (Math.random() - 0.5) * (dir ? 1.6 : 6.28);
+      const m = new THREE.Mesh(streakGeo, glowUnique(i % 3 ? color : 0xffffff, 0.95));
+      m.position.set(p.x, (p.y ?? 0.7) + (Math.random() - 0.3) * 0.4, p.z);
+      m.rotation.set(-Math.PI / 2 + (Math.random() - 0.5) * 0.6, 0, -a);
+      const L = (0.45 + Math.random() * 0.6) * (0.7 + power * 0.4), sp = 5 + Math.random() * 5;
+      const vx = Math.cos(a) * sp, vz = Math.sin(a) * sp;
+      this._push(m, 0.16 + Math.random() * 0.08, (k) => { m.position.x += vx * 0.016; m.position.z += vz * 0.016; m.scale.set(L * (0.4 + k), 0.06 * k + 0.01, 1); m.material.opacity = k; });
+    }
+    this.sphere({ x: p.x, y: p.y ?? 0.7, z: p.z }, { color: 0xffffff, r0: 0.15, r1: 0.45 + power * 0.25, life: 0.1, opacity: 0.9 });
+    if (power > 1.2) this.flashLight(p, color, 3 + power * 2, 0.15, 4);
+  }
+  /** scorch / energy mark on the ground that fades slowly */
+  decal(p, r, color = 0x000000, life = 3) {
+    const g = new THREE.Group(); g.position.set(p.x, 0.035, p.z);
+    const dark = new THREE.Mesh(discGeo, new THREE.MeshBasicMaterial({ color: 0x0a0806, transparent: true, opacity: 0.4, depthWrite: false })); dark.rotation.x = -Math.PI / 2; dark.scale.setScalar(r * 0.9); g.add(dark);
+    const rim = new THREE.Mesh(ringGeo, glowUnique(color, 0.6)); rim.rotation.x = -Math.PI / 2; rim.scale.setScalar(r * 0.95); rim.position.y = 0.005; g.add(rim);
+    g.rotation.y = Math.random() * 6;
+    return this._push(g, life, (k) => { dark.material.opacity = 0.4 * Math.min(1, k * 2); rim.material.opacity = 0.6 * k * k; });
   }
   setScale(h) { this.add.mat.uniforms.uScale.value = h * 0.9; this.norm.mat.uniforms.uScale.value = h * 0.9; }
 
@@ -137,6 +171,9 @@ export class VFX {
     return this._push(m, o.life ?? 0.35, (k) => { const r = r0 + (r1 - r0) * (1 - k * k * k); m.scale.setScalar(r); m.material.opacity = (o.opacity ?? 0.7) * k; });
   }
   explosion(p, r = 1.5, color = 0xffaa33, color2 = 0xff4422) {
+    this.flashLight(p, color, 5 + r * 3, 0.35, 3 + r * 3);
+    this.decal(p, r * 0.8, color, 3.5);
+    this.hitSpark({ x: p.x, y: 0.5, z: p.z }, null, color, 1 + r * 0.4);
     this.sphere(p, { color: 0xffffff, r0: 0.2, r1: r * 0.7, life: 0.18, opacity: 0.9 });
     this.sphere(p, { color, r0: 0.3, r1: r, life: 0.4, opacity: 0.6 });
     this.ring(p, { color, r0: 0.3, r1: r * 1.3, life: 0.45 });
@@ -246,6 +283,7 @@ export class VFX {
 
   update(dt) {
     this.time += dt;
+    for (const s of this.lights) if (s.t > 0) { s.t -= dt; const k = Math.max(0, s.t / s.max); s.l.intensity = s.i0 * k * k; }
     this.add.update(dt);
     this.norm.update(dt);
     for (let i = this.fx.length - 1; i >= 0; i--) {
