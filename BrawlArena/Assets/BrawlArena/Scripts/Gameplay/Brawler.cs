@@ -434,6 +434,13 @@ namespace BrawlArena.Gameplay
 
         private void HideAfterDeath() { if (!IsAlive) Anim.SetVisible(false); }
 
+        /// <summary>Blendet Figur UND Bodenschatten ein/aus (Busch-Tarnung).</summary>
+        public void SetVisible(bool visible)
+        {
+            Anim.SetVisible(visible);
+            if (blobShadow != null && IsAlive && blobShadow.activeSelf != visible) blobShadow.SetActive(visible);
+        }
+
         public void Respawn(Vector3 position)
         {
             CancelInvoke("HideAfterDeath");

@@ -12,6 +12,23 @@ namespace BrawlArena.Rendering
         private static readonly Dictionary<string, Material> cache = new Dictionary<string, Material>();
         private static readonly Dictionary<string, Shader> shaders = new Dictionary<string, Shader>();
 
+        private static readonly HashSet<Material> generated = new HashSet<Material>();
+
+        /// <summary>Erzeugt eine eigene Material-Instanz (wird beim Match-Ende freigegeben).</summary>
+        public static Material Instance(Material source)
+        {
+            var m = new Material(source);
+            generated.Add(m);
+            return m;
+        }
+
+        /// <summary>Gibt eine zur Laufzeit erzeugte Material-Instanz frei (Bibliothek/Assets bleiben unberührt).</summary>
+        public static void Release(Material m)
+        {
+            if (m == null || !generated.Remove(m)) return;
+            Object.Destroy(m);
+        }
+
         public static Shader GetShader(string name, string fallback)
         {
             Shader s;
@@ -115,6 +132,7 @@ namespace BrawlArena.Rendering
         public static Material CreateGround(Color a, Color b)
         {
             var m = new Material(GetShader("BrawlArena/Ground", "Standard")) { name = "Ground" };
+            generated.Add(m);
             m.SetColor("_ColorA", a);
             m.SetColor("_ColorB", b);
             return m;
@@ -123,7 +141,8 @@ namespace BrawlArena.Rendering
         /// <summary>Neues transparentes Material (eigene Farbe, z.B. für Zonen).</summary>
         public static Material CreateTransparent(Color c, Texture tex = null)
         {
-            var m = new Material(UnlitTransparent) { name = "TransparentInstance" };
+            var m = Instance(UnlitTransparent);
+            m.name = "TransparentInstance";
             m.color = c;
             if (tex != null) m.mainTexture = tex;
             return m;
@@ -131,7 +150,8 @@ namespace BrawlArena.Rendering
 
         public static Material CreateUnlit(Color c)
         {
-            var m = new Material(Unlit) { name = "UnlitInstance" };
+            var m = Instance(Unlit);
+            m.name = "UnlitInstance";
             m.color = c;
             return m;
         }

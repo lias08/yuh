@@ -11,6 +11,25 @@ namespace BrawlArena.Rendering
     public static class ProcMesh
     {
         private static Mesh sphere, sphereLow, box, cylinder, cone, torus, quad, disc, hemisphere;
+        private static readonly HashSet<Mesh> shared = new HashSet<Mesh>();
+        private static readonly HashSet<Mesh> generated = new HashSet<Mesh>();
+
+        /// <summary>Registriert ein zur Laufzeit erzeugtes Mesh (darf später freigegeben werden).</summary>
+        public static Mesh Track(Mesh m) { if (m != null) generated.Add(m); return m; }
+
+        /// <summary>Gibt ein zur Laufzeit erzeugtes, nicht geteiltes Mesh frei. Assets werden nie angetastet.</summary>
+        public static void Release(Mesh m)
+        {
+            if (m == null || IsShared(m) || !generated.Remove(m)) return;
+            Object.Destroy(m);
+        }
+
+        /// <summary>Meshes, die dauerhaft geteilt werden (nicht zerstören).</summary>
+        public static void MarkShared(Mesh m) { if (m != null) shared.Add(m); }
+        public static bool IsShared(Mesh m)
+        {
+            return m == sphere || m == sphereLow || m == box || m == cylinder || m == cone || m == torus || m == quad || m == disc || m == hemisphere || shared.Contains(m);
+        }
 
         /// <summary>Kugel mit Durchmesser 1.</summary>
         public static Mesh Sphere { get { return sphere ?? (sphere = BuildSphere(16, 12, 1f)); } }
@@ -229,7 +248,7 @@ namespace BrawlArena.Rendering
             var m = new Mesh { name = name };
             m.SetVertices(v); m.SetNormals(n); m.SetUVs(0, uv); m.SetTriangles(t, 0);
             m.RecalculateBounds();
-            return m;
+            return Track(m);
         }
     }
 
@@ -276,7 +295,7 @@ namespace BrawlArena.Rendering
             if (verts.Count > 65000) m.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
             m.SetVertices(verts); m.SetNormals(norms); m.SetColors(cols); m.SetUVs(0, uvs); m.SetTriangles(tris, 0);
             m.RecalculateBounds();
-            return m;
+            return ProcMesh.Track(m);
         }
 
         public void Clear() { verts.Clear(); norms.Clear(); cols.Clear(); uvs.Clear(); tris.Clear(); }

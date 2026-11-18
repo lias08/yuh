@@ -212,6 +212,7 @@ namespace BrawlArena.Gameplay
                     mb.Add(ProcMesh.Box, new Vector3(-0.05f, 0, -0.2f), Quaternion.Euler(0, -20, 0), new Vector3(0.1f, 0.1f, 0.45f), w); break;
             }
             m = mb.Build("Proj_" + v);
+            ProcMesh.MarkShared(m);
             meshes[v] = m;
             return m;
         }

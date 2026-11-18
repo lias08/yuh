@@ -327,7 +327,7 @@ namespace BrawlArena.Modes
             {
                 showTeams = false,
                 centerTop = "Welle " + Mathf.Max(1, wave) + "/" + Def.waves,
-                centerBottom = (waveActive ? "Gegner: " + enemies.Count : "Bereit machen ...") + "   ♥ " + l,
+                centerBottom = (waveActive ? "Gegner: " + enemies.Count : "Bereit machen ...") + "   Leben: " + l,
                 leftProgress = -1f, rightProgress = -1f
             };
         }

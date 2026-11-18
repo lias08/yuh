@@ -1,0 +1,53 @@
+# Baut die Android-APK automatisch mit GitHub Actions (game-ci).
+# Einmalig nötig – unter Settings > Secrets and variables > Actions anlegen:
+#   UNITY_EMAIL, UNITY_PASSWORD  (Unity-Konto)
+#   UNITY_LICENSE                (Inhalt der Unity_v20XX.x.ulf-Datei, siehe README)
+# Danach: Reiter "Actions" > "Android-APK bauen" > "Run workflow". Die APK liegt anschließend
+# als Artefakt "BrawlArena-APK" am Workflow-Lauf zum Herunterladen bereit.
+name: Android-APK bauen
+
+on:
+  workflow_dispatch:   # manuell starten (erst nach dem Anlegen der Secrets sinnvoll)
+
+jobs:
+  build:
+    name: APK erstellen
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Speicherplatz freigeben
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: false
+          tool-cache: false
+
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Unity-Library-Cache
+        uses: actions/cache@v4
+        with:
+          path: BrawlArena/Library
+          key: Library-Android-${{ hashFiles('BrawlArena/Assets/**', 'BrawlArena/Packages/**', 'BrawlArena/ProjectSettings/**') }}
+          restore-keys: |
+            Library-Android-
+
+      - name: APK bauen
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          projectPath: BrawlArena
+          targetPlatform: Android
+          buildName: BrawlArena
+          buildMethod: BrawlArena.EditorTools.BuildScript.BuildAndroidCI
+          androidExportType: androidPackage
+
+      - name: APK hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: BrawlArena-APK
+          path: build/Android
+          if-no-files-found: error

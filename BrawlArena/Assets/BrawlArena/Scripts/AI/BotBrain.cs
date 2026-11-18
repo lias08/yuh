@@ -32,11 +32,20 @@ namespace BrawlArena.AI
             thinkTimer = Random.Range(0f, 0.3f);
         }
 
+        /// <summary>Ziel existiert noch und lebt (zerstörte Unity-Objekte sicher erkennen).</summary>
+        private static bool Valid(IDamageable t)
+        {
+            if (t == null) return false;
+            if (t is Object && (Object)t == null) return false; // zerstörtes Unity-Objekt
+            return t.IsAlive;
+        }
+
         public InputFrame Poll(Brawler self, float dt)
         {
             var ctx = MatchContext.Current;
             var frame = new InputFrame();
             if (ctx == null || ctx.Mode == null) return frame;
+            if (!Valid(target)) target = null;
 
             thinkTimer -= dt; pathTimer -= dt; strafeTimer -= dt; attackDelay -= dt; superDelay -= dt;
             if (thinkTimer <= 0f)

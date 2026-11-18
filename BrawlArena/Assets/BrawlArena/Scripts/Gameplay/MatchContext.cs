@@ -215,7 +215,7 @@ namespace BrawlArena.Gameplay
                 if (b == null || b.Anim == null) continue;
                 if (!b.IsAlive) continue;
                 bool visible = b.IsVisibleTo(lt);
-                b.Anim.SetVisible(visible);
+                b.SetVisible(visible);
                 b.Anim.SetGhost(b.TeamId == lt && b.InBush);
             }
         }
@@ -274,8 +274,17 @@ namespace BrawlArena.Gameplay
             Brawler.Died -= OnBrawlerDied;
             Time.timeScale = 1f;
             FX.Clear();
+            ReleaseGeneratedAssets();
             if (Current == this) Current = null;
             Destroy(gameObject);
+        }
+
+        /// <summary>Gibt zur Laufzeit erzeugte Meshes/Materialien frei (verhindert Speicherlecks über viele Matches).</summary>
+        private void ReleaseGeneratedAssets()
+        {
+            foreach (var mf in GetComponentsInChildren<MeshFilter>(true)) Rendering.ProcMesh.Release(mf.sharedMesh);
+            foreach (var r in GetComponentsInChildren<Renderer>(true))
+                foreach (var mat in r.sharedMaterials) Rendering.MaterialLibrary.Release(mat);
         }
 
         private void OnDestroy()

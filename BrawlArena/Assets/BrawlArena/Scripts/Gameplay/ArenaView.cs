@@ -103,6 +103,8 @@ namespace BrawlArena.Gameplay
                         }
                     }
                 }
+            // Alte Meshes freigeben (Neuaufbau nach zerstörten Wänden)
+            ProcMesh.Release(wallsMf.sharedMesh); ProcMesh.Release(cratesMf.sharedMesh); ProcMesh.Release(bushMf.sharedMesh);
             wallsMf.sharedMesh = walls.Build("Walls");
             cratesMf.sharedMesh = crates.Build("Crates");
             bushMf.sharedMesh = bushes.Build("Bushes");
@@ -116,7 +118,7 @@ namespace BrawlArena.Gameplay
                     if (arena.GetTile(x, r) == TileType.Water)
                         wb.Add(ProcMesh.GroundQuad, arena.CellToWorld(x, r) + Vector3.up * 0.03f, Quaternion.identity, Vector3.one, Color.white);
             if (wb.VertexCount == 0) return;
-            var go = MakeObj("Water", new Material(MaterialLibrary.Water));
+            var go = MakeObj("Water", MaterialLibrary.Instance(MaterialLibrary.Water));
             var mat = go.GetComponent<MeshRenderer>().sharedMaterial;
             mat.SetColor("_Color", arena.Map.theme.water);
             mat.SetColor("_DeepColor", Color.Lerp(arena.Map.theme.water, Color.black, 0.35f));

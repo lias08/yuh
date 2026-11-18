@@ -51,10 +51,14 @@ namespace BrawlArena.Gameplay
 
         public System.Action OnFootstep;
 
+        public AppearanceConfig Appearance { get; private set; }
+
         public void Setup(AppearanceConfig appearance, AnimationConfig anim)
         {
             Teardown();
             cfg = anim;
+            Appearance = appearance;
+            customBaseSet = false;
             Rig = BrawlerModelBuilder.Build(appearance, transform);
             modelRoot = Rig.root;
             mpb = new MaterialPropertyBlock();
@@ -67,12 +71,20 @@ namespace BrawlArena.Gameplay
         public void Teardown()
         {
             if (graph.IsValid()) graph.Destroy();
-            if (modelRoot != null) Destroy(modelRoot.gameObject);
+            ReleaseMeshes();
+            if (modelRoot != null) { modelRoot.gameObject.SetActive(false); Destroy(modelRoot.gameObject); }
             modelRoot = null;
             Rig = null;
         }
 
-        private void OnDestroy() { if (graph.IsValid()) graph.Destroy(); }
+        private void OnDestroy() { if (graph.IsValid()) graph.Destroy(); ReleaseMeshes(); }
+
+        /// <summary>Prozedurale Figuren-Meshes freigeben (Assets eigener Modelle bleiben unberührt).</summary>
+        private void ReleaseMeshes()
+        {
+            if (modelRoot == null) return;
+            foreach (var mf in modelRoot.GetComponentsInChildren<MeshFilter>(true)) ProcMesh.Release(mf.sharedMesh);
+        }
 
         // =================================================================== Öffentliche API
         public void SetFacing(Vector3 dir, bool instant = false)
@@ -118,6 +130,7 @@ namespace BrawlArena.Gameplay
             modelRoot.rotation = Quaternion.Slerp(modelRoot.rotation, targetYaw, 1f - Mathf.Exp(-dt * 18f));
 
             if (useClips) UpdateClips(dt);
+            else if (Rig.isCustomModel) UpdateCustomSimple(dt);
             else UpdateProcedural(dt);
 
             UpdateFlash(dt);
@@ -299,6 +312,33 @@ namespace BrawlArena.Gameplay
                 if (stepTimer >= Mathf.PI) { stepTimer -= Mathf.PI; if (OnFootstep != null) OnFootstep(); }
             }
             if (hitT >= 0f) hitT += dt;
+        }
+
+        // =================================================================== Eigenes Modell ohne Clips
+        private Vector3 customBasePos;
+        private bool customBaseSet;
+
+        /// <summary>Einfache Bewegung (Hüpfen, Neigen, Angriffs-Ruck) für eigene Modelle ohne AnimationClips.</summary>
+        private void UpdateCustomSimple(float dt)
+        {
+            var body = Rig.bodyPivot;
+            if (!customBaseSet) { customBasePos = body.localPosition; customBaseSet = true; }
+            phase += dt * Mathf.Lerp(0f, 12f, move) * cfg.walkCycleSpeed;
+            float bob = Mathf.Abs(Mathf.Sin(phase)) * 0.08f * cfg.bounceAmount * move + Mathf.Sin(Time.time * 2.5f) * 0.015f;
+            float lean = 8f * move, yaw = 0f;
+            if (attackT >= 0f) { attackT += dt; float k = Mathf.Clamp01(attackT / attackDur); lean -= Mathf.Sin(k * Mathf.PI) * 10f; if (k >= 1f) attackT = -1f; }
+            if (superT >= 0f) { superT += dt; float k = Mathf.Clamp01(superT / 0.5f); bob += Mathf.Sin(k * Mathf.PI) * 0.45f; yaw = k * 360f; if (k >= 1f) superT = -1f; }
+            if (transformT >= 0f) { transformT += dt; float k = Mathf.Clamp01(transformT / 0.8f); bob += Mathf.Sin(k * Mathf.PI) * 0.6f; yaw += k * 720f; if (k >= 1f) transformT = -1f; }
+            if (victory) bob += Mathf.Abs(Mathf.Sin(Time.time * 5f)) * 0.3f;
+            if (deathT >= 0f) { deathT += dt; lean = Mathf.Lerp(lean, -85f, Mathf.Clamp01(deathT / 0.5f)); }
+            body.localPosition = customBasePos + Vector3.up * bob;
+            body.localRotation = Quaternion.Euler(Appearance != null ? Appearance.customModelRotation : Vector3.zero) * Quaternion.Euler(lean, yaw, 0);
+            if (hitT >= 0f) hitT += dt;
+            if (move > 0.3f)
+            {
+                stepTimer += dt * 6f * move;
+                if (stepTimer >= Mathf.PI) { stepTimer -= Mathf.PI; if (OnFootstep != null) OnFootstep(); }
+            }
         }
 
         // =================================================================== Clips (Playables)

@@ -96,7 +96,7 @@ namespace BrawlArena.Save
                 if (win)
                 {
                     bp.wins++;
-                    if (mode.modeType == ModeType.Showdown) p.stats.showdownWins++;
+                    if (mode.modeType == ModeType.Showdown) { if (r.rank == 1) p.stats.showdownWins++; }
                     else if (mode.modeType == ModeType.SoloSurvival || mode.modeType == ModeType.DuoSurvival) p.stats.survivalWins++;
                     else p.stats.teamWins++;
                 }
